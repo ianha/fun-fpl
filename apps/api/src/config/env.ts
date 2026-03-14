@@ -1,0 +1,15 @@
+import "dotenv/config";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const defaultDbPath = fileURLToPath(
+  new URL("../../data/fpl.sqlite", import.meta.url),
+);
+const workspaceDbPath = path.resolve(process.cwd(), "apps/api/data/fpl.sqlite");
+
+export const env = {
+  port: Number(process.env.PORT ?? 4000),
+  baseUrl: process.env.FPL_BASE_URL ?? "https://fantasy.premierleague.com/api",
+  dbPath: process.env.DB_PATH ?? (process.cwd().endsWith("/apps/api") ? path.resolve(defaultDbPath) : workspaceDbPath),
+  fplMinRequestIntervalMs: Number(process.env.FPL_MIN_REQUEST_INTERVAL_MS ?? 3000),
+};
