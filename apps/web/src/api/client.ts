@@ -1,4 +1,4 @@
-import type { OverviewResponse, PlayerCard, PlayerDetail, FixtureCard, TeamSummary } from "@fpl/contracts";
+import type { OverviewResponse, PlayerCard, PlayerDetail, FixtureCard, TeamSummary, GameweekSummary } from "@fpl/contracts";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:4000/api";
 const API_ORIGIN = API_BASE_URL.replace(/\/api\/?$/, "");
@@ -15,17 +15,25 @@ export function getOverview() {
   return request<OverviewResponse>("/overview");
 }
 
+export function getGameweeks() {
+  return request<GameweekSummary[]>("/gameweeks");
+}
+
 export function getPlayers(params?: {
   search?: string;
   position?: string;
   sort?: string;
   team?: string;
+  fromGW?: number;
+  toGW?: number;
 }) {
   const p = new URLSearchParams();
   if (params?.search) p.set("search", params.search);
   if (params?.position) p.set("position", params.position);
   if (params?.sort) p.set("sort", params.sort);
   if (params?.team) p.set("team", params.team);
+  if (params?.fromGW !== undefined) p.set("fromGW", String(params.fromGW));
+  if (params?.toGW !== undefined) p.set("toGW", String(params.toGW));
   const q = p.toString();
   return request<PlayerCard[]>(`/players${q ? `?${q}` : ""}`);
 }

@@ -14,6 +14,8 @@ type PlayerQuery = {
   team?: number;
   position?: number;
   sort?: string;
+  fromGW?: number;
+  toGW?: number;
 };
 
 function mapBoolean(value: number) {
@@ -107,15 +109,69 @@ export class QueryService {
       params.position = query.position;
     }
 
+    const where = filters.length > 0 ? `WHERE ${filters.join(" AND ")}` : "";
+
+    // When a gameweek range is specified, aggregate per-GW history instead of using season totals
+    if (query.fromGW !== undefined && query.toGW !== undefined) {
+      params.fromGW = query.fromGW;
+      params.toGW = query.toGW;
+      return this.db
+        .prepare(
+          `SELECT p.id, p.web_name AS webName, p.first_name AS firstName, p.second_name AS secondName,
+                  p.team_id AS teamId, t.name AS teamName, t.short_name AS teamShortName,
+                  p.image_path AS imagePath,
+                  p.position_id AS positionId, pos.name AS positionName,
+                  p.now_cost AS nowCost, p.form,
+                  p.selected_by_percent AS selectedByPercent, p.status,
+                  COALESCE(SUM(ph.total_points), 0) AS totalPoints,
+                  CASE WHEN COUNT(ph.round) > 0
+                       THEN ROUND(CAST(SUM(ph.total_points) AS REAL) / COUNT(ph.round), 1)
+                       ELSE 0 END AS pointsPerGame,
+                  COALESCE(SUM(ph.goals_scored), 0) AS goalsScored,
+                  COALESCE(SUM(ph.assists), 0) AS assists,
+                  COALESCE(SUM(ph.clean_sheets), 0) AS cleanSheets,
+                  COALESCE(SUM(ph.minutes), 0) AS minutes,
+                  COALESCE(SUM(ph.bonus), 0) AS bonus,
+                  COALESCE(SUM(ph.bps), 0) AS bps,
+                  COALESCE(SUM(ph.creativity), 0) AS creativity,
+                  COALESCE(SUM(ph.influence), 0) AS influence,
+                  COALESCE(SUM(ph.threat), 0) AS threat,
+                  COALESCE(SUM(ph.ict_index), 0) AS ictIndex,
+                  COALESCE(SUM(ph.expected_goals), 0) AS expectedGoals,
+                  COALESCE(SUM(ph.expected_assists), 0) AS expectedAssists,
+                  COALESCE(SUM(ph.expected_goal_involvements), 0) AS expectedGoalInvolvements,
+                  COALESCE(SUM(ph.expected_goal_performance), 0) AS expectedGoalPerformance,
+                  COALESCE(SUM(ph.expected_assist_performance), 0) AS expectedAssistPerformance,
+                  COALESCE(SUM(ph.expected_goal_involvement_performance), 0) AS expectedGoalInvolvementPerformance,
+                  COALESCE(SUM(ph.expected_goals_conceded), 0) AS expectedGoalsConceded,
+                  CASE WHEN SUM(ph.minutes) > 0
+                       THEN ROUND(CAST(SUM(ph.clean_sheets) AS REAL) / (SUM(ph.minutes) / 90.0), 2)
+                       ELSE 0 END AS cleanSheetsPer90,
+                  COALESCE(SUM(ph.starts), 0) AS starts,
+                  COALESCE(SUM(ph.tackles), 0) AS tackles,
+                  COALESCE(SUM(ph.recoveries), 0) AS recoveries,
+                  COALESCE(SUM(ph.defensive_contribution), 0) AS defensiveContribution
+           FROM players p
+           JOIN teams t ON t.id = p.team_id
+           JOIN positions pos ON pos.id = p.position_id
+           LEFT JOIN player_history ph ON ph.player_id = p.id
+                                      AND ph.round >= @fromGW
+                                      AND ph.round <= @toGW
+           ${where}
+           GROUP BY p.id
+           ORDER BY COALESCE(SUM(ph.total_points), 0) DESC, p.web_name ASC`,
+        )
+        .all(params) as PlayerCard[];
+    }
+
+    // Default: season totals from the players table
     const sortMap: Record<string, string> = {
       total_points: "p.total_points DESC",
       form: "p.form DESC",
       cost: "p.now_cost DESC",
       minutes: "p.minutes DESC",
     };
-
     const orderBy = sortMap[query.sort ?? "total_points"] ?? sortMap.total_points;
-    const where = filters.length > 0 ? `WHERE ${filters.join(" AND ")}` : "";
 
     return this.db
       .prepare(

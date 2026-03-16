@@ -35,6 +35,8 @@ export function createApiRouter(db: AppDatabase) {
         team: req.query.team ? Number(req.query.team) : undefined,
         position: req.query.position ? Number(req.query.position) : undefined,
         sort: req.query.sort?.toString(),
+        fromGW: req.query.fromGW ? Number(req.query.fromGW) : undefined,
+        toGW: req.query.toGW ? Number(req.query.toGW) : undefined,
       }),
     );
   });

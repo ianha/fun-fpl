@@ -1,7 +1,8 @@
 import { useEffect, useState, useCallback, useMemo } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import type { PlayerCard, TeamSummary } from "@fpl/contracts";
-import { getPlayers, getTeams, resolveAssetUrl } from "@/api/client";
+import { getPlayers, getTeams, getGameweeks, resolveAssetUrl } from "@/api/client";
+import type { GameweekSummary } from "@fpl/contracts";
 import { formatCost, formatPercent } from "@/lib/format";
 import { Input } from "@/components/ui/input";
 import {
@@ -148,25 +149,43 @@ export function PlayersPage() {
 
   const [state, setState] = useState<AsyncState<PlayerCard[]>>({ status: "loading" });
   const [teams, setTeams] = useState<TeamSummary[]>([]);
+  const [gameweeks, setGameweeks] = useState<GameweekSummary[]>([]);
+  const [fromGW, setFromGW] = useState<string>(searchParams.get("fromGW") ?? "");
+  const [toGW, setToGW] = useState<string>(searchParams.get("toGW") ?? "");
 
   useEffect(() => {
     getTeams().then(setTeams).catch(() => {});
-  }, []);
+    getGameweeks()
+      .then((gws) => {
+        setGameweeks(gws);
+        // Default toGW to the current (or last finished) gameweek if not set
+        if (!searchParams.get("toGW")) {
+          const current = gws.find((g) => g.isCurrent) ?? gws.filter((g) => g.isFinished).at(-1);
+          if (current) setToGW(String(current.id));
+        }
+        if (!searchParams.get("fromGW") && gws.length > 0) {
+          setFromGW(String(gws[0].id));
+        }
+      })
+      .catch(() => {});
+  }, []);  // eslint-disable-line react-hooks/exhaustive-deps
 
-  const fetchPlayers = useCallback((q: string, pos: string, tm: string) => {
+  const fetchPlayers = useCallback((q: string, pos: string, tm: string, fgw: string, tgw: string) => {
     setState({ status: "loading" });
     getPlayers({
       search: q || undefined,
       position: pos !== "all" ? pos : undefined,
       team: tm !== "all" ? tm : undefined,
+      fromGW: fgw ? Number(fgw) : undefined,
+      toGW: tgw ? Number(tgw) : undefined,
     })
       .then((data) => setState({ status: "ready", data }))
       .catch((e) => setState({ status: "error", message: e.message }));
   }, []);
 
   useEffect(() => {
-    fetchPlayers(search, position, team);
-  }, [search, position, team, fetchPlayers]);
+    fetchPlayers(search, position, team, fromGW, toGW);
+  }, [search, position, team, fromGW, toGW, fetchPlayers]);
 
   useEffect(() => {
     const p = new URLSearchParams();
@@ -177,10 +196,12 @@ export function PlayersPage() {
     if (minPrice) p.set("minPrice", minPrice);
     if (maxPrice) p.set("maxPrice", maxPrice);
     if (minMinutes) p.set("minMin", minMinutes);
+    if (fromGW) p.set("fromGW", fromGW);
+    if (toGW) p.set("toGW", toGW);
     if (sortCol !== "totalPoints") p.set("col", sortCol);
     if (sortDir !== "desc") p.set("dir", sortDir);
     setSearchParams(p, { replace: true });
-  }, [search, position, team, statusFilter, minPrice, maxPrice, minMinutes, sortCol, sortDir, setSearchParams]);
+  }, [search, position, team, statusFilter, minPrice, maxPrice, minMinutes, fromGW, toGW, sortCol, sortDir, setSearchParams]);
 
   function handleSort(col: string) {
     if (col === sortCol) {
@@ -263,6 +284,33 @@ export function PlayersPage() {
           <Input type="number" placeholder="Max £" value={maxPrice} onChange={(e) => setMaxPrice(e.target.value)} className="w-20 h-9 text-sm" step="0.1" min="0" />
         </div>
         <Input type="number" placeholder="Min mins" value={minMinutes} onChange={(e) => setMinMinutes(e.target.value)} className="w-24 h-9 text-sm" min="0" />
+
+        {/* GW range — shown once gameweeks have loaded */}
+        {gameweeks.length > 0 && (
+          <div className="flex items-center gap-1">
+            <Select value={fromGW} onValueChange={setFromGW}>
+              <SelectTrigger className="w-24 h-9">
+                <SelectValue placeholder="From GW" />
+              </SelectTrigger>
+              <SelectContent>
+                {gameweeks.map((gw) => (
+                  <SelectItem key={gw.id} value={String(gw.id)}>GW{gw.id}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <span className="text-muted-foreground text-xs">→</span>
+            <Select value={toGW} onValueChange={setToGW}>
+              <SelectTrigger className="w-24 h-9">
+                <SelectValue placeholder="To GW" />
+              </SelectTrigger>
+              <SelectContent>
+                {gameweeks.map((gw) => (
+                  <SelectItem key={gw.id} value={String(gw.id)}>GW{gw.id}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
       </div>
 
       {state.status === "ready" && (
