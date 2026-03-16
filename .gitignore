@@ -13,4 +13,4 @@ coverage/
 data/
 apps/api/data/
 apps/web/.vite/
-
+.vscode/
