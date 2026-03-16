@@ -236,6 +236,11 @@ export function PlayersPage() {
     return list;
   }, [state, statusFilter, minPrice, maxPrice, minMinutes, sortCol, sortDir]);
 
+  const teamImageMap = useMemo(
+    () => new Map(teams.map((t) => [t.id, resolveAssetUrl(t.imagePath)])),
+    [teams],
+  );
+
   return (
     <div className="flex flex-col gap-5 p-6 lg:p-8 min-h-0">
       <div className="space-y-1">
@@ -364,6 +369,7 @@ export function PlayersPage() {
                 players.map((player, idx) => {
                   const img = resolveAssetUrl(player.imagePath);
                   const pos = POSITIONS[player.positionId];
+                  const teamImg = teamImageMap.get(player.teamId);
                   return (
                     <tr
                       key={player.id}
@@ -392,7 +398,10 @@ export function PlayersPage() {
                               )}
                               <StatusDot status={player.status} />
                             </div>
-                            <p className="text-[10px] text-muted-foreground truncate max-w-28">{player.teamShortName}</p>
+                            <div className="flex items-center gap-1">
+                              {teamImg && <img src={teamImg} alt={player.teamShortName} className="h-3.5 w-3.5 object-contain shrink-0" />}
+                              <p className="text-[10px] text-muted-foreground truncate max-w-28">{player.teamShortName}</p>
+                            </div>
                           </div>
                         </div>
                       </td>
