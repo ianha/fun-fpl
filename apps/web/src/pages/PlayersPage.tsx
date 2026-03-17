@@ -146,8 +146,8 @@ export function PlayersPage() {
   const [minPrice, setMinPrice] = useState(searchParams.get("minPrice") ?? "");
   const [maxPrice, setMaxPrice] = useState(searchParams.get("maxPrice") ?? "");
   const [minMinutes, setMinMinutes] = useState(searchParams.get("minMin") ?? "");
-  const [sortCol, setSortCol] = useState<string>(searchParams.get("col") ?? "totalPoints");
-  const [sortDir, setSortDir] = useState<SortDir>((searchParams.get("dir") as SortDir) ?? "desc");
+  const [sortCol, setSortCol] = useState<string>("totalPoints");
+  const [sortDir, setSortDir] = useState<SortDir>("desc");
 
   const [state, setState] = useState<AsyncState<PlayerCard[]>>({ status: "loading" });
   const [teams, setTeams] = useState<TeamSummary[]>([]);
