@@ -1,4 +1,4 @@
-# FPL Clone
+# Fun FPL
 
 A TypeScript monorepo that mirrors the public experience of [fantasy.premierleague.com](https://fantasy.premierleague.com) using a local SQLite database, a Node.js/Express API, and a React frontend.
 
