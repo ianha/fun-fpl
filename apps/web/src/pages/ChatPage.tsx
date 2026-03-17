@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
 import Markdown from "react-markdown";
 import type { Components } from "react-markdown";
-import { Send, ChevronDown, ChevronRight, MessageSquare, Bot, User, Loader2, LogIn } from "lucide-react";
+import { Send, MessageSquare, Bot, User, Loader2, LogIn } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -23,7 +23,6 @@ type ToolCall = {
   name: string;
   input: Record<string, unknown>;
   result?: string;
-  expanded: boolean;
 };
 
 type Message = {
@@ -67,107 +66,38 @@ function prettifyJson(raw: string): string {
   }
 }
 
-// ── Tool call block ───────────────────────────────────────────────────────────
-
-function ToolCallBlock({
-  toolCall,
-  onToggle,
-}: {
-  toolCall: ToolCall;
-  onToggle: (id: string) => void;
-}) {
-  const [showSql, setShowSql] = useState(false);
-  const label = toolCall.name === "query" ? "Queried database" : "Fetched schema";
-
-  return (
-    <div className="mt-2 rounded-lg border border-white/10 bg-white/5 text-xs">
-      <button
-        type="button"
-        onClick={() => onToggle(toolCall.id)}
-        className="flex w-full items-center gap-2 px-3 py-2 text-left text-white/60 hover:text-white/80 transition-colors"
-      >
-        {toolCall.expanded ? (
-          <ChevronDown className="h-3 w-3 shrink-0" />
-        ) : (
-          <ChevronRight className="h-3 w-3 shrink-0" />
-        )}
-        <span className="font-mono text-accent/80">{label}</span>
-        {!toolCall.result && (
-          <Loader2 className="ml-auto h-3 w-3 animate-spin shrink-0 text-white/40" />
-        )}
-      </button>
-
-      {toolCall.expanded && (
-        <div className="border-t border-white/10 px-3 py-2 space-y-2">
-          {/* Result — shown first */}
-          {toolCall.result ? (
-            <div>
-              <p className="mb-1 text-white/40 uppercase tracking-wider text-[10px]">Result</p>
-              <pre className="max-h-48 overflow-y-auto overflow-x-auto rounded bg-black/30 p-2 font-mono text-white/70 text-[10px] whitespace-pre-wrap break-all">
-                {prettifyJson(toolCall.result)}
-              </pre>
-            </div>
-          ) : (
-            <p className="text-white/30 italic">Waiting for result…</p>
-          )}
-
-          {/* Show SQL toggle — only for query tool */}
-          {toolCall.name === "query" && !!toolCall.input.sql && (
-            <div>
-              <button
-                type="button"
-                onClick={() => setShowSql((v) => !v)}
-                className="text-[10px] text-white/30 hover:text-white/60 transition-colors"
-              >
-                {showSql ? "Hide SQL" : "Show SQL"}
-              </button>
-              {showSql && (
-                <pre className="mt-1 overflow-x-auto rounded bg-black/30 p-2 font-mono text-accent/90 whitespace-pre-wrap break-all text-[10px]">
-                  {String(toolCall.input.sql)}
-                </pre>
-              )}
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
 // ── Markdown components (dark theme) ─────────────────────────────────────────
 
 const markdownComponents: Components = {
-  p:      ({ children }) => <p className="mb-1.5 last:mb-0">{children}</p>,
+  p: ({ children }) => <p className="mb-1.5 last:mb-0">{children}</p>,
   strong: ({ children }) => <strong className="font-semibold text-white">{children}</strong>,
-  em:     ({ children }) => <em className="italic text-white/80">{children}</em>,
-  code:   ({ children }) => (
+  em: ({ children }) => <em className="italic text-white/80">{children}</em>,
+  code: ({ children }) => (
     <code className="rounded bg-black/30 px-1 py-0.5 font-mono text-[11px] text-accent/90">
       {children}
     </code>
   ),
-  pre:    ({ children }) => (
+  pre: ({ children }) => (
     <pre className="my-1.5 overflow-x-auto rounded-lg bg-black/30 p-2.5 font-mono text-[11px] text-accent/90">
       {children}
     </pre>
   ),
-  ul:     ({ children }) => <ul className="mb-1.5 ml-4 list-disc space-y-0.5">{children}</ul>,
-  ol:     ({ children }) => <ol className="mb-1.5 ml-4 list-decimal space-y-0.5">{children}</ol>,
-  li:     ({ children }) => <li>{children}</li>,
-  h1:     ({ children }) => <h1 className="mb-2 text-base font-bold text-white">{children}</h1>,
-  h2:     ({ children }) => <h2 className="mb-1.5 text-sm font-bold text-white">{children}</h2>,
-  h3:     ({ children }) => <h3 className="mb-1 text-sm font-semibold text-white/90">{children}</h3>,
+  ul: ({ children }) => <ul className="mb-1.5 ml-4 list-disc space-y-0.5">{children}</ul>,
+  ol: ({ children }) => <ol className="mb-1.5 ml-4 list-decimal space-y-0.5">{children}</ol>,
+  li: ({ children }) => <li>{children}</li>,
+  h1: ({ children }) => <h1 className="mb-2 text-base font-bold text-white">{children}</h1>,
+  h2: ({ children }) => <h2 className="mb-1.5 text-sm font-bold text-white">{children}</h2>,
+  h3: ({ children }) => <h3 className="mb-1 text-sm font-semibold text-white/90">{children}</h3>,
 };
 
 // ── Message bubble ────────────────────────────────────────────────────────────
 
-function MessageBubble({
-  message,
-  onToggleTool,
-}: {
-  message: Message;
-  onToggleTool: (msgId: string, toolId: string) => void;
-}) {
+function MessageBubble({ message }: { message: Message }) {
   const isUser = message.role === "user";
+  const [showQueries, setShowQueries] = useState(false);
+  const toolCalls = message.toolCalls ?? [];
+  const hasQueries = toolCalls.length > 0;
+  const queryLabel = toolCalls.length > 1 ? `DB queries (${toolCalls.length})` : "DB query";
 
   return (
     <div className={cn("flex gap-3 px-4 py-3", isUser ? "flex-row-reverse" : "flex-row")}>
@@ -188,7 +118,7 @@ function MessageBubble({
       </div>
 
       {/* Content */}
-      <div className={cn("max-w-[80%] space-y-1", isUser ? "items-end" : "items-start")}>
+      <div className={cn("max-w-[80%]", isUser ? "items-end" : "items-start")}>
         <div
           className={cn(
             "rounded-2xl px-4 py-2.5 text-sm leading-relaxed",
@@ -209,20 +139,45 @@ function MessageBubble({
               <span>Thinking…</span>
             </span>
           ) : null}
-        </div>
 
-        {/* Tool calls */}
-        {message.toolCalls && message.toolCalls.length > 0 && (
-          <div className="space-y-1 w-full">
-            {message.toolCalls.map((tc) => (
-              <ToolCallBlock
-                key={tc.id}
-                toolCall={tc}
-                onToggle={(toolId) => onToggleTool(message.id, toolId)}
-              />
-            ))}
-          </div>
-        )}
+          {/* Inline DB query panel */}
+          {!isUser && hasQueries && (
+            <>
+              {showQueries && (
+                <div className="mt-2 pt-2 border-t border-white/10 space-y-3">
+                  {toolCalls.map((tc) => (
+                    <div key={tc.id} className="space-y-1.5">
+                      {tc.name === "query" && tc.input.sql && (
+                        <pre className="overflow-x-auto rounded bg-black/30 p-2 font-mono text-accent/90 whitespace-pre-wrap break-all text-[10px]">
+                          {String(tc.input.sql)}
+                        </pre>
+                      )}
+                      {tc.result ? (
+                        <pre className="max-h-40 overflow-y-auto overflow-x-auto rounded bg-black/30 p-2 font-mono text-white/60 text-[10px] whitespace-pre-wrap break-all">
+                          {prettifyJson(tc.result)}
+                        </pre>
+                      ) : (
+                        <span className="flex items-center gap-1 text-[10px] text-white/30">
+                          <Loader2 className="h-2.5 w-2.5 animate-spin" />
+                          Running…
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div className="flex justify-end mt-1.5">
+                <button
+                  type="button"
+                  onClick={() => setShowQueries((v) => !v)}
+                  className="text-[9px] text-white/30 hover:text-white/60 transition-colors"
+                >
+                  {queryLabel}
+                </button>
+              </div>
+            </>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -381,17 +336,16 @@ export function ChatPage() {
                 prev.map((m) =>
                   m.id === assistantMsgId
                     ? {
-                        ...m,
-                        toolCalls: [
-                          ...(m.toolCalls ?? []),
-                          {
-                            id: event.id,
-                            name: event.name,
-                            input: event.input,
-                            expanded: false,
-                          },
-                        ],
-                      }
+                      ...m,
+                      toolCalls: [
+                        ...(m.toolCalls ?? []),
+                        {
+                          id: event.id,
+                          name: event.name,
+                          input: event.input,
+                        },
+                      ],
+                    }
                     : m,
                 ),
               );
@@ -400,11 +354,11 @@ export function ChatPage() {
                 prev.map((m) =>
                   m.id === assistantMsgId
                     ? {
-                        ...m,
-                        toolCalls: (m.toolCalls ?? []).map((tc) =>
-                          tc.id === event.id ? { ...tc, result: event.content } : tc,
-                        ),
-                      }
+                      ...m,
+                      toolCalls: (m.toolCalls ?? []).map((tc) =>
+                        tc.id === event.id ? { ...tc, result: event.content } : tc,
+                      ),
+                    }
                     : m,
                 ),
               );
@@ -413,12 +367,12 @@ export function ChatPage() {
                 prev.map((m) =>
                   m.id === assistantMsgId
                     ? {
-                        ...m,
-                        content: m.content
-                          ? `${m.content}\n\n⚠️ ${event.message}`
-                          : `⚠️ ${event.message}`,
-                        streaming: false,
-                      }
+                      ...m,
+                      content: m.content
+                        ? `${m.content}\n\n⚠️ ${event.message}`
+                        : `⚠️ ${event.message}`,
+                      streaming: false,
+                    }
                     : m,
                 ),
               );
@@ -445,22 +399,6 @@ export function ChatPage() {
 
     setStreaming(false);
   }, [input, streaming, selectedProvider, messages]);
-
-  // ── Toggle tool call expansion ────────────────────────────────────────────────
-  const handleToggleTool = useCallback((msgId: string, toolId: string) => {
-    setMessages((prev) =>
-      prev.map((m) =>
-        m.id === msgId
-          ? {
-              ...m,
-              toolCalls: (m.toolCalls ?? []).map((tc) =>
-                tc.id === toolId ? { ...tc, expanded: !tc.expanded } : tc,
-              ),
-            }
-          : m,
-      ),
-    );
-  }, []);
 
   // ── Keyboard handler ──────────────────────────────────────────────────────────
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -568,11 +506,7 @@ export function ChatPage() {
         ) : (
           <div className="py-2">
             {messages.map((msg) => (
-              <MessageBubble
-                key={msg.id}
-                message={msg}
-                onToggleTool={handleToggleTool}
-              />
+              <MessageBubble key={msg.id} message={msg} />
             ))}
             <div ref={bottomRef} />
           </div>
@@ -609,8 +543,8 @@ export function ChatPage() {
               needsOAuth
                 ? "Sign in with Google first…"
                 : providers.length === 0
-                ? "Configure a provider in llm-providers.json…"
-                : "Ask about FPL data… (Enter to send, Shift+Enter for newline)"
+                  ? "Configure a provider in llm-providers.json…"
+                  : "Ask about the FPL dataset… (Enter to send, Shift+Enter for newline)"
             }
             disabled={streaming || needsOAuth || providers.length === 0}
             rows={1}
