@@ -43,7 +43,7 @@ const STATUS_MAP: Record<string, { label: string; color: string }> = {
 
 function StatBox({ label, value, accent }: { label: string; value: string | number; accent?: string }) {
   return (
-    <div className="rounded-lg border border-white/8 bg-secondary/40 p-3 text-center">
+    <div className="rounded-lg border border-white/[0.08] bg-secondary/40 p-3 text-center">
       <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1">{label}</p>
       <p className={`font-display text-lg font-bold ${accent ?? "text-white"}`}>{value}</p>
     </div>
@@ -53,7 +53,7 @@ function StatBox({ label, value, accent }: { label: string; value: string | numb
 function CustomTooltip({ active, payload, label }: any) {
   if (!active || !payload?.length) return null;
   return (
-    <div className="rounded-lg border border-white/10 bg-[#1a0530]/95 backdrop-blur-sm px-3 py-2 shadow-xl text-xs">
+    <div className="rounded-lg border border-white/[0.08] bg-[#091729]/95 backdrop-blur-sm px-3 py-2 shadow-xl text-xs">
       <p className="text-muted-foreground mb-1">GW {label}</p>
       {payload.map((p: any) => (
         <p key={p.name} style={{ color: p.color }} className="font-semibold">
@@ -130,8 +130,8 @@ export function PlayerDetailPage() {
       </Link>
 
       {/* Hero */}
-      <div className="relative overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-br from-[#37003c] via-[#5b0075] to-[#200030] p-6">
-        <div className="absolute -top-12 -right-12 h-48 w-48 rounded-full bg-primary/20 blur-3xl pointer-events-none" />
+      <div className="relative overflow-hidden rounded-2xl border border-white/[0.08] bg-gradient-to-br from-[#0A2540] via-[#0E2236] to-[#091729] p-6">
+        <div className="absolute -top-12 -right-12 h-48 w-48 rounded-full bg-[#635BFF]/10 blur-3xl pointer-events-none" />
         <div className="absolute bottom-0 left-0 h-32 w-32 rounded-full bg-accent/10 blur-2xl pointer-events-none" />
 
         <div className="relative flex flex-col gap-5 sm:flex-row sm:items-start">
@@ -218,8 +218,8 @@ export function PlayerDetailPage() {
                 <AreaChart data={chartData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
                   <defs>
                     <linearGradient id="gradPoints" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#00ffbf" stopOpacity={0.3} />
-                      <stop offset="95%" stopColor="#00ffbf" stopOpacity={0} />
+                      <stop offset="5%" stopColor="#00D4AA" stopOpacity={0.3} />
+                      <stop offset="95%" stopColor="#00D4AA" stopOpacity={0} />
                     </linearGradient>
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
@@ -239,11 +239,11 @@ export function PlayerDetailPage() {
                   <Area
                     type="monotone"
                     dataKey="Points"
-                    stroke="#00ffbf"
+                    stroke="#00D4AA"
                     strokeWidth={2}
                     fill="url(#gradPoints)"
-                    dot={{ fill: "#00ffbf", r: 3, strokeWidth: 0 }}
-                    activeDot={{ r: 5, fill: "#00ffbf", strokeWidth: 0 }}
+                    dot={{ fill: "#00D4AA", r: 3, strokeWidth: 0 }}
+                    activeDot={{ r: 5, fill: "#00D4AA", strokeWidth: 0 }}
                   />
                 </AreaChart>
               </ResponsiveContainer>
@@ -276,11 +276,11 @@ export function PlayerDetailPage() {
                 <Radar
                   name={player.webName}
                   dataKey="value"
-                  stroke="#e90052"
-                  fill="#e90052"
+                  stroke="#635BFF"
+                  fill="#635BFF"
                   fillOpacity={0.2}
                   strokeWidth={2}
-                  dot={{ fill: "#e90052", r: 3, strokeWidth: 0 }}
+                  dot={{ fill: "#635BFF", r: 3, strokeWidth: 0 }}
                 />
               </RadarChart>
             </ResponsiveContainer>

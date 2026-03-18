@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { motion, useMotionValue, useMotionTemplate, animate } from "framer-motion";
+import { motion } from "framer-motion";
 import type { OverviewResponse } from "@fpl/contracts";
 import { getOverview, resolveAssetUrl } from "@/api/client";
 import { formatCost } from "@/lib/format";
@@ -22,27 +22,15 @@ type AsyncState<T> =
   | { status: "ready"; data: T };
 
 const POSITION_LABELS: Record<number, { short: string; color: string }> = {
-  1: { short: "GKP", color: "bg-yellow-500/20 text-yellow-300" },
-  2: { short: "DEF", color: "bg-blue-500/20 text-blue-300" },
-  3: { short: "MID", color: "bg-green-500/20 text-green-300" },
-  4: { short: "FWD", color: "bg-pink-500/20 text-pink-300" },
+  1: { short: "GKP", color: "bg-yellow-500/15 text-yellow-300" },
+  2: { short: "DEF", color: "bg-blue-500/15 text-blue-300" },
+  3: { short: "MID", color: "bg-emerald-500/15 text-emerald-300" },
+  4: { short: "FWD", color: "bg-[#635BFF]/15 text-[#7A73FF]" },
 };
 
 
 export function Dashboard() {
   const [state, setState] = useState<AsyncState<OverviewResponse>>({ status: "loading" });
-  const color = useMotionValue("#a855f7");
-
-  useEffect(() => {
-    animate(color, ["#a855f7", "#e90052", "#00ffbf", "#a855f7"], {
-      ease: "easeInOut",
-      duration: 12,
-      repeat: Infinity,
-      repeatType: "mirror",
-    });
-  }, [color]);
-
-  const backgroundImage = useMotionTemplate`radial-gradient(125% 125% at 50% 0%, #0d0118 50%, ${color})`;
 
   useEffect(() => {
     getOverview()
@@ -52,15 +40,12 @@ export function Dashboard() {
 
   if (state.status === "loading") {
     return (
-      <motion.div
-        style={{ backgroundImage }}
-        className="min-h-screen flex items-center justify-center"
-      >
+      <div className="min-h-screen flex items-center justify-center bg-[#0A2540]">
         <div className="flex flex-col items-center gap-3">
-          <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-          <p className="text-sm text-white/50">Loading dashboard…</p>
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-[#635BFF] border-t-transparent" />
+          <p className="text-sm text-[#8899AA]">Loading dashboard…</p>
         </div>
-      </motion.div>
+      </div>
     );
   }
 
@@ -108,10 +93,7 @@ export function Dashboard() {
   ];
 
   return (
-    <motion.div
-      style={{ backgroundImage }}
-      className="min-h-screen w-full text-white relative overflow-x-hidden"
-    >
+    <div className="min-h-screen w-full text-white relative overflow-x-hidden bg-[#0A2540]">
       <BGPattern variant="grid" mask="fade-edges" />
 
       <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
@@ -125,12 +107,12 @@ export function Dashboard() {
             <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-8">
               <div className="flex-1 space-y-3">
                 <div className="flex items-center gap-2">
-                  <Zap className="w-4 h-4 text-accent" />
-                  <span className="text-xs font-semibold uppercase tracking-widest text-accent">
+                  <Zap className="w-4 h-4 text-[#00D4AA]" />
+                  <span className="text-xs font-semibold uppercase tracking-widest text-[#00D4AA]">
                     Fantasy Premier League
                   </span>
                 </div>
-                <h1 className="font-display text-4xl md:text-5xl font-bold bg-gradient-to-r from-white via-purple-200 to-pink-200 bg-clip-text text-transparent">
+                <h1 className="font-display text-4xl md:text-5xl font-bold text-white">
                   {currentGW ? `Gameweek ${currentGW.id}` : "FPL Analytics"}
                 </h1>
                 {nextGW?.deadlineTime && (
@@ -147,13 +129,13 @@ export function Dashboard() {
                 )}
                 <div className="flex flex-wrap gap-3 pt-1">
                   <Link to="/players">
-                    <button className="px-5 py-2.5 bg-gradient-to-r from-primary to-purple-600 rounded-xl hover:from-primary/90 hover:to-purple-500 transition-all flex items-center gap-2 text-sm font-medium cursor-pointer shadow-lg shadow-primary/20">
+                    <button className="px-5 py-2.5 bg-[#635BFF] hover:bg-[#7A73FF] rounded-full transition-all flex items-center gap-2 text-sm font-semibold cursor-pointer">
                       Browse Players
                       <ChevronRight className="w-4 h-4" />
                     </button>
                   </Link>
                   <Link to="/fixtures">
-                    <button className="px-5 py-2.5 bg-white/8 border border-white/15 rounded-xl hover:bg-white/15 transition-all text-sm font-medium cursor-pointer backdrop-blur-xl">
+                    <button className="px-5 py-2.5 bg-transparent border border-white/30 hover:border-white/50 rounded-full transition-all text-sm font-semibold cursor-pointer">
                       View Fixtures
                     </button>
                   </Link>
@@ -168,9 +150,9 @@ export function Dashboard() {
                     initial={{ opacity: 0, scale: 0.9 }}
                     animate={{ opacity: 1, scale: 1 }}
                     transition={{ delay: 0.1 + i * 0.08 }}
-                    className="bg-white/6 backdrop-blur-xl border border-white/10 rounded-xl p-4 min-w-[130px]"
+                    className="bg-[#0B1D33] border border-white/[0.08] rounded-xl p-4 min-w-[130px]"
                   >
-                    <div className="flex items-center gap-1.5 mb-2 text-purple-300">
+                    <div className="flex items-center gap-1.5 mb-2 text-[#8899AA]">
                       {stat.icon}
                       <span className="text-[10px] uppercase tracking-wider">{stat.label}</span>
                     </div>
@@ -326,6 +308,6 @@ export function Dashboard() {
           </div>
         </div>
       </div>
-    </motion.div>
+    </div>
   );
 }

@@ -25,8 +25,8 @@ type SortDir = "asc" | "desc";
 const POSITIONS: Record<number, { label: string; short: string; color: string }> = {
   1: { label: "Goalkeeper", short: "GKP", color: "bg-yellow-500/15 text-yellow-400 border-yellow-500/25" },
   2: { label: "Defender", short: "DEF", color: "bg-blue-500/15 text-blue-400 border-blue-500/25" },
-  3: { label: "Midfielder", short: "MID", color: "bg-green-500/15 text-green-400 border-green-500/25" },
-  4: { label: "Forward", short: "FWD", color: "bg-primary/15 text-primary border-primary/25" },
+  3: { label: "Midfielder", short: "MID", color: "bg-emerald-500/15 text-emerald-400 border-emerald-500/25" },
+  4: { label: "Forward", short: "FWD", color: "bg-[#635BFF]/15 text-[#7A73FF] border-[#635BFF]/25" },
 };
 
 const STATUS_CONFIG: Record<string, { label: string; dot: string }> = {
@@ -65,15 +65,15 @@ const COLUMNS: ColDef[] = [
   // Goals group
   { key: "goalsScored",              label: "G",   title: "Goals",                    align: "right", sortable: true, group: "Goals" },
   { key: "expectedGoals",            label: "xG",  title: "Expected Goals",           align: "right", sortable: true, format: (v) => Number(v).toFixed(2), group: "Goals" },
-  { key: "expectedGoalPerformance",  label: "xGP", title: "Expected Goal Performance",align: "right", sortable: true, signed: true, format: (v) => { const n = Number(v); return <span style={{ color: n < 0 ? "hsl(0,72%,51%)" : "hsl(160,100%,50%)" }}>{n.toFixed(2)}</span>; }, group: "Goals" },
+  { key: "expectedGoalPerformance",  label: "xGP", title: "Expected Goal Performance",align: "right", sortable: true, signed: true, format: (v) => { const n = Number(v); return <span style={{ color: n < 0 ? "hsl(0,72%,51%)" : "#00D4AA" }}>{n.toFixed(2)}</span>; }, group: "Goals" },
   // Assists group
   { key: "assists",                   label: "A",   title: "Assists",                    align: "right", sortable: true, group: "Assists" },
   { key: "expectedAssists",           label: "xA",  title: "Expected Assists",           align: "right", sortable: true, format: (v) => Number(v).toFixed(2), group: "Assists" },
-  { key: "expectedAssistPerformance", label: "xAP", title: "Expected Assist Performance",align: "right", sortable: true, signed: true, format: (v) => { const n = Number(v); return <span style={{ color: n < 0 ? "hsl(0,72%,51%)" : "hsl(160,100%,50%)" }}>{n.toFixed(2)}</span>; }, group: "Assists" },
+  { key: "expectedAssistPerformance", label: "xAP", title: "Expected Assist Performance",align: "right", sortable: true, signed: true, format: (v) => { const n = Number(v); return <span style={{ color: n < 0 ? "hsl(0,72%,51%)" : "#00D4AA" }}>{n.toFixed(2)}</span>; }, group: "Assists" },
   // GI group
   { key: "gi",                                  label: "GI",   title: "Goal Involvements (G+A)",            align: "right", sortable: true, compute: (p) => p.goalsScored + p.assists, group: "GI" },
   { key: "expectedGoalInvolvements",            label: "xGI",  title: "Expected Goal Involvements",         align: "right", sortable: true, format: (v) => Number(v).toFixed(2), group: "GI" },
-  { key: "expectedGoalInvolvementPerformance",  label: "xGIP", title: "Expected Goal Involvement Performance", align: "right", sortable: true, signed: true, format: (v) => { const n = Number(v); return <span style={{ color: n < 0 ? "hsl(0,72%,51%)" : "hsl(160,100%,50%)" }}>{n.toFixed(2)}</span>; }, group: "GI" },
+  { key: "expectedGoalInvolvementPerformance",  label: "xGIP", title: "Expected Goal Involvement Performance", align: "right", sortable: true, signed: true, format: (v) => { const n = Number(v); return <span style={{ color: n < 0 ? "hsl(0,72%,51%)" : "#00D4AA" }}>{n.toFixed(2)}</span>; }, group: "GI" },
 ];
 
 // Track which keys are the first column in their group (for left-border separator)
@@ -381,7 +381,7 @@ export function PlayersPage() {
                         idx % 2 === 0 ? "bg-transparent" : "bg-white/[0.025]",
                       )}
                     >
-                      <td className="sticky left-0 z-10 px-4 py-2 bg-[hsl(267,70%,5%)] group-hover:bg-[hsl(267,70%,9%)] transition-colors">
+                      <td className="sticky left-0 z-10 px-4 py-2 bg-[#0A2540] group-hover:bg-[#0E2236] transition-colors">
                         <div className="flex items-center gap-2.5">
                           {img ? (
                             <img src={img} alt={player.webName} className="h-8 w-8 rounded-md object-cover border border-white/10 bg-secondary shrink-0" />
@@ -414,11 +414,11 @@ export function PlayersPage() {
                         return (
                           <td
                             key={col.key}
-                            style={sortCol === col.key ? { color: "hsl(160,100%,50%)" } : undefined}
+                            style={sortCol === col.key ? { color: "#00D4AA" } : undefined}
                             className={cn(
                               "px-3 py-2 text-xs tabular-nums whitespace-nowrap",
                               col.align === "right" ? "text-right" : "text-left",
-                              sortCol === col.key ? "bg-[hsl(342,100%,46%,0.05)]" : "",
+                              sortCol === col.key ? "bg-[#635BFF]/5" : "",
                               GROUP_STARTS.has(col.key) && "border-l border-white/8",
                             )}
                           >

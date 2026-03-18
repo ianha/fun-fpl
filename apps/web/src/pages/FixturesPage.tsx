@@ -116,7 +116,7 @@ export function FixturesPage() {
               onClick={() => setSelectedTeam(null)}
               className={`shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
                 selectedTeam === null
-                  ? "bg-accent text-black shadow-lg shadow-accent/25"
+                  ? "bg-[#635BFF] text-white shadow-lg shadow-[#635BFF]/25"
                   : "bg-white/8 text-white/60 hover:bg-white/15 hover:text-white"
               }`}
             >

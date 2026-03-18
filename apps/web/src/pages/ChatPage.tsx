@@ -453,7 +453,7 @@ export function ChatPage() {
               className="rounded-lg border border-white/10 bg-white/5 px-2.5 py-1.5 text-xs text-white/80 focus:outline-none focus:ring-1 focus:ring-primary/50 cursor-pointer"
             >
               {providers.map((p) => (
-                <option key={p.id} value={p.id} className="bg-[hsl(267,70%,8%)]">
+                <option key={p.id} value={p.id} className="bg-[#0F2F4F]">
                   {p.name}
                   {p.authType === "oauth" && !p.oauthConnected ? " (not signed in)" : ""}
                 </option>
