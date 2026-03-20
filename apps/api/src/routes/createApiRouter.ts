@@ -1,10 +1,12 @@
 import { Router } from "express";
 import { QueryService } from "../services/queryService.js";
 import type { AppDatabase } from "../db/database.js";
+import { MyTeamSyncService } from "../my-team/myTeamSyncService.js";
 
 export function createApiRouter(db: AppDatabase) {
   const router = Router();
   const queryService = new QueryService(db);
+  const myTeamSyncService = new MyTeamSyncService(db);
 
   router.get("/health", (_req, res) => {
     res.json({ ok: true });
@@ -50,6 +52,67 @@ export function createApiRouter(db: AppDatabase) {
     res.json(player);
   });
 
+  router.get("/my-team/accounts", (_req, res) => {
+    res.json(queryService.getMyTeamAccounts());
+  });
+
+  router.get("/my-team", (req, res) => {
+    const accountId = req.query.accountId ? Number(req.query.accountId) : undefined;
+    res.json(queryService.getMyTeam(accountId));
+  });
+
+  router.post("/my-team/auth", async (req, res) => {
+    try {
+      const { email, password, entryId } = req.body as {
+        email?: string;
+        password?: string;
+        entryId?: number | string;
+      };
+      if (!email || !password) {
+        res.status(400).json({ message: "email and password are required" });
+        return;
+      }
+
+      const parsedEntryId =
+        entryId === undefined || entryId === null || entryId === ""
+          ? undefined
+          : Number(entryId);
+      if (parsedEntryId !== undefined && (!Number.isInteger(parsedEntryId) || parsedEntryId <= 0)) {
+        res.status(400).json({ message: "entryId must be a positive integer when provided" });
+        return;
+      }
+
+      const accountId = myTeamSyncService.linkAccount(email, password, parsedEntryId);
+      await myTeamSyncService.syncAccount(accountId, true);
+      res.status(201).json(queryService.getMyTeam(accountId));
+    } catch (error) {
+      res.status(400).json({
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+  });
+
+  router.post("/my-team/sync", async (req, res) => {
+    try {
+      const { accountId, gameweek, force } = req.body as {
+        accountId?: number;
+        gameweek?: number;
+        force?: boolean;
+      };
+      if (accountId) {
+        await myTeamSyncService.syncAccount(accountId, Boolean(force), gameweek);
+        res.json(queryService.getMyTeam(accountId));
+        return;
+      }
+
+      await myTeamSyncService.syncAll(Boolean(force), gameweek);
+      res.json(queryService.getMyTeam());
+    } catch (error) {
+      res.status(400).json({
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+  });
+
   return router;
 }
-

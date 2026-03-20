@@ -1,4 +1,12 @@
-import type { OverviewResponse, PlayerCard, PlayerDetail, FixtureCard, TeamSummary, GameweekSummary } from "@fpl/contracts";
+import type {
+  OverviewResponse,
+  PlayerCard,
+  PlayerDetail,
+  FixtureCard,
+  TeamSummary,
+  GameweekSummary,
+  MyTeamPageResponse,
+} from "@fpl/contracts";
 
 function resolveApiBaseUrl() {
   if (import.meta.env.VITE_API_BASE_URL) {
@@ -20,6 +28,29 @@ async function request<T>(path: string): Promise<T> {
   if (!response.ok) {
     throw new Error(`Request failed: ${response.status}`);
   }
+  return response.json() as Promise<T>;
+}
+
+async function requestWithBody<T>(path: string, method: string, body: unknown): Promise<T> {
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    method,
+    headers: {
+      "content-type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (!response.ok) {
+    let message = `Request failed: ${response.status}`;
+    try {
+      const payload = (await response.json()) as { message?: string };
+      if (payload.message) message = payload.message;
+    } catch {
+      // ignore
+    }
+    throw new Error(message);
+  }
+
   return response.json() as Promise<T>;
 }
 
@@ -68,4 +99,21 @@ export function getFixtures(params?: { event?: number; team?: number }) {
 
 export function resolveAssetUrl(imagePath: string | null) {
   return imagePath ? `${API_ORIGIN}${imagePath}` : null;
+}
+
+export function getMyTeam(accountId?: number) {
+  const q = accountId ? `?accountId=${accountId}` : "";
+  return request<MyTeamPageResponse>(`/my-team${q}`);
+}
+
+export function linkMyTeamAccount(email: string, password: string, entryId?: number) {
+  return requestWithBody<MyTeamPageResponse>("/my-team/auth", "POST", {
+    email,
+    password,
+    ...(entryId ? { entryId } : {}),
+  });
+}
+
+export function syncMyTeam(params?: { accountId?: number; gameweek?: number; force?: boolean }) {
+  return requestWithBody<MyTeamPageResponse>("/my-team/sync", "POST", params ?? {});
 }

@@ -119,3 +119,73 @@ export type OverviewResponse = {
   fixtures: FixtureCard[];
   teams: TeamSummary[];
 };
+
+export type MyTeamAccountSummary = {
+  id: number;
+  email: string;
+  entryId: number | null;
+  managerName: string;
+  teamName: string;
+  authStatus: string;
+  authError: string | null;
+  lastAuthenticatedAt: string | null;
+};
+
+export type MyTeamPick = {
+  slotId: string;
+  position: number;
+  multiplier: number;
+  isCaptain: boolean;
+  isViceCaptain: boolean;
+  sellingPrice: number | null;
+  purchasePrice: number | null;
+  player: PlayerCard;
+  role: "starter" | "bench";
+  benchOrder: number | null;
+};
+
+export type MyTeamTransfer = {
+  id: string;
+  gameweek: number | null;
+  madeAt: string;
+  playerIn: PlayerCard;
+  playerOut: PlayerCard;
+  cost: number;
+};
+
+export type MyTeamSeasonSummary = {
+  season: string;
+  overallPoints: number;
+  overallRank: number;
+  rank: number;
+};
+
+export type MyTeamHistoryRow = {
+  gameweek: number;
+  points: number;
+  totalPoints: number;
+  overallRank: number;
+  rank: number;
+  bank: number;
+  value: number;
+  eventTransfers: number;
+  eventTransfersCost: number;
+  pointsOnBench: number;
+  activeChip: string | null;
+};
+
+export type MyTeamPageResponse = {
+  accounts: MyTeamAccountSummary[];
+  selectedAccountId: number | null;
+  currentGameweek: number | null;
+  freeTransfers: number;
+  bank: number;
+  overallPoints: number;
+  overallRank: number;
+  teamName: string;
+  managerName: string;
+  picks: MyTeamPick[];
+  transfers: MyTeamTransfer[];
+  seasons: MyTeamSeasonSummary[];
+  history: MyTeamHistoryRow[];
+};

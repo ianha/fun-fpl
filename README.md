@@ -15,6 +15,7 @@ A TypeScript monorepo that mirrors the public experience of [fantasy.premierleag
 - **Express HTTP API serving player, fixture, gameweek, and team data.** A thin read-only API layer sits on top of the database, exposing structured JSON endpoints that the frontend (and any external tool) can consume.
 
 - **Multi-page React frontend with premium FPL-inspired design.** A dark-themed, glassmorphism UI across five pages: a dashboard, full player browser with search and filters, per-player stat detail with charts, a fixtures browser with gameweek navigation, and a team detail page. Built with Tailwind CSS, shadcn/ui components, framer-motion animations, and Recharts for data visualisation.
+- **My Team sync, account linking, and scratchpad planner in the same house style.** A dedicated `My Team` page extends the current UI language with a pitch view, linked FPL account support, transfer history, season archive, recent gameweek summaries, and a local-only mock transfer planner for experimenting with legal swaps and chip simulation without touching the real FPL site.
 
 - **Local JPEG asset library for players and teams.** Sync runs download official player portraits and club badges into `apps/api/data/assets`, save their local paths in SQLite, and serve them from the API under `/assets/...`. If FPL has not published a portrait yet, the sync generates a local placeholder JPEG instead of failing.
 
@@ -122,6 +123,13 @@ Run these from the repository root.
 | `npm run sync -- --gameweek 29` | Targeted sync — only players in gameweek 29 |
 | `npm run sync -- --force` | Force full refresh even if nothing has changed upstream |
 | `npm run sync -- --gameweek 29 --force` | Force gameweek refresh even if unchanged |
+| `npm run link:my-team -- --email you@example.com --password "..." --entry 1234567` | Link or relink one FPL account with an optional manual entry ID |
+| `npm run sync:my-team` | Sync all linked FPL accounts for the My Team page |
+| `npm run sync:my-team -- --gameweek 29` | Refresh linked My Team accounts for one gameweek |
+| `npm run sync:my-team -- --force` | Force-refresh all linked My Team accounts |
+| `npm run sync:my-team -- --gameweek 29 --force` | Force-refresh linked My Team data for one gameweek |
+| `npm run sync:my-team -- --account 3` | Refresh one linked My Team account by local account id |
+| `npm run sync:my-team -- --email you@example.com` | Refresh one linked My Team account by email |
 
 The `--` separator in sync commands passes the flags through npm to the underlying script. Without it, npm would try to interpret `--gameweek` as an npm flag rather than passing it to the sync CLI.
 
@@ -136,7 +144,9 @@ Copy `.env.example` to `.env`. All variables have working defaults for local dev
 | `PORT` | `4000` | Port the Express API listens on |
 | `DB_PATH` | `./apps/api/data/fpl.sqlite` | Path to the SQLite database file |
 | `FPL_BASE_URL` | `https://fantasy.premierleague.com/api` | Base URL for the public FPL API |
+| `FPL_SITE_URL` | `https://fantasy.premierleague.com` | Base URL for the authenticated FPL website login flow used by My Team |
 | `FPL_MIN_REQUEST_INTERVAL_MS` | `3000` | Minimum milliseconds between outbound FPL requests |
+| `FPL_AUTH_SECRET` | unset | Required secret used to encrypt stored FPL credentials for My Team account linking |
 | `ASSETS_DIR` | `./apps/api/data/assets` | Directory where downloaded/generated player and team JPEG files are stored |
 | `VITE_API_BASE_URL` | unset | Optional override for the API base URL used by the frontend; when unset, the frontend uses the current site origin plus `/api` |
 | `VITE_ALLOWED_HOSTS` | unset | Optional comma-separated list of hostnames that the Vite dev server should allow, useful for tunnels or custom local domains |
@@ -144,6 +154,61 @@ Copy `.env.example` to `.env`. All variables have working defaults for local dev
 The API reads `.env` automatically via [dotenv](https://github.com/motdotla/dotenv). The frontend reads `VITE_*` variables at build/dev time via Vite's built-in env handling.
 
 **A note on `VITE_*` variables:** Vite treats any environment variable prefixed with `VITE_` specially — during the build (or dev server startup), it replaces every reference to `import.meta.env.VITE_API_BASE_URL` with the literal string value from your `.env` file. If `VITE_API_BASE_URL` is unset, this app falls back to `window.location.origin + "/api"` in the browser, which lets the same frontend work both on `localhost` and through a tunnel as long as `/api` is routed to the API server. If you change `VITE_API_BASE_URL` after the app is built, you need to rebuild. For local development this is transparent because the dev server restarts automatically.
+
+## My Team account linking
+
+The `My Team` page can now sync your real FPL manager account, including your current squad, recent picks, transfer history, and season archive.
+
+Before you use it, set a local encryption secret in `.env`:
+
+```bash
+FPL_AUTH_SECRET=use-a-long-random-string-here
+```
+
+This secret is required because the API stores your FPL email/password locally in encrypted form so it can re-authenticate during later sync runs. Without `FPL_AUTH_SECRET`, the account-linking flow is intentionally disabled.
+
+### Link your account from the UI
+
+1. Start the API and frontend with `npm run dev`
+2. Open [http://localhost:5173/my-team](http://localhost:5173/my-team)
+3. Enter your FPL email and password in the `Link your real FPL account` form
+4. If FPL blocks automatic entry detection for your account, also enter your current-season entry ID
+5. Submit the form to link the account and run the initial sync
+
+The linked manager is then available in the page selector, and the `Sync now` button refreshes that account on demand.
+
+If the stored FPL password stops working later, the account is marked as needing relink in the UI. The last successful My Team snapshot stays visible, but future syncs for that account are blocked until you re-enter the password.
+
+### Sync linked accounts from the CLI
+
+Once one or more accounts are linked, you can refresh them without opening the UI:
+
+```bash
+npm run link:my-team -- --email you@example.com --password "your-fpl-password" --entry 1234567
+npm run sync:my-team
+```
+
+Useful variants:
+
+```bash
+npm run sync:my-team -- --gameweek 29
+npm run sync:my-team -- --force
+npm run sync:my-team -- --gameweek 29 --force
+npm run sync:my-team -- --account 3
+npm run sync:my-team -- --email you@example.com
+```
+
+The `link:my-team` command creates or updates a linked account and accepts an optional manual `--entry` value for accounts where FPL's anti-bot flow blocks automatic entry discovery. The sync commands refresh every linked account by default. If you pass `--account` or `--email`, the sync targets just that linked manager. The current implementation stores encrypted credentials locally and uses them to log back into FPL before each My Team sync. If one account fails FPL authentication during a multi-account run, it is marked as needing relink and the CLI continues syncing the remaining linked accounts before exiting with a non-zero status.
+
+## My Team visual QA checklist
+
+Use this checklist when reviewing the `My Team` page after UI changes:
+
+- Shell consistency: the page should use the same sidebar, spacing rhythm, typography, and glass-card treatment as the dashboard and players pages.
+- Pitch responsiveness: no horizontal overflow on mobile; player cards remain tap-friendly and readable.
+- Planner clarity: mock transfers must feel clearly local-only, with obvious reset behavior and visible planner warnings.
+- Accessibility: focus rings stay visible, contrast remains readable on dark surfaces, and key controls have descriptive labels.
+- Touch targets: manager switching, planner controls, and chip selectors should remain comfortable on mobile.
 
 ---
 

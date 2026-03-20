@@ -15,6 +15,7 @@ import { cn } from "@/lib/utils";
 
 const navItems = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard },
+  { to: "/my-team", label: "My Team", icon: Shield },
   { to: "/players", label: "Players", icon: Users },
   { to: "/fixtures", label: "Fixtures", icon: Calendar },
   { to: "/chat", label: "AI Chat", icon: MessageSquare },

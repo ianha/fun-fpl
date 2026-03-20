@@ -179,4 +179,86 @@ CREATE TABLE IF NOT EXISTS sync_runs (
   status TEXT NOT NULL,
   error_message TEXT
 );
+
+CREATE TABLE IF NOT EXISTS my_team_accounts (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  email TEXT NOT NULL UNIQUE,
+  encrypted_credentials TEXT NOT NULL,
+  manager_id INTEGER,
+  entry_id INTEGER,
+  player_first_name TEXT,
+  player_last_name TEXT,
+  player_region_name TEXT,
+  team_name TEXT,
+  auth_status TEXT NOT NULL DEFAULT 'linked',
+  auth_error TEXT,
+  last_authenticated_at TEXT,
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS my_team_seasons (
+  account_id INTEGER NOT NULL,
+  season_name TEXT NOT NULL,
+  total_points INTEGER NOT NULL DEFAULT 0,
+  overall_rank INTEGER NOT NULL DEFAULT 0,
+  rank INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY(account_id, season_name),
+  FOREIGN KEY(account_id) REFERENCES my_team_accounts(id)
+);
+
+CREATE TABLE IF NOT EXISTS my_team_gameweeks (
+  account_id INTEGER NOT NULL,
+  gameweek_id INTEGER NOT NULL,
+  points INTEGER NOT NULL DEFAULT 0,
+  total_points INTEGER NOT NULL DEFAULT 0,
+  overall_rank INTEGER NOT NULL DEFAULT 0,
+  rank INTEGER NOT NULL DEFAULT 0,
+  bank INTEGER NOT NULL DEFAULT 0,
+  value INTEGER NOT NULL DEFAULT 0,
+  event_transfers INTEGER NOT NULL DEFAULT 0,
+  event_transfers_cost INTEGER NOT NULL DEFAULT 0,
+  points_on_bench INTEGER NOT NULL DEFAULT 0,
+  active_chip TEXT,
+  PRIMARY KEY(account_id, gameweek_id),
+  FOREIGN KEY(account_id) REFERENCES my_team_accounts(id)
+);
+
+CREATE TABLE IF NOT EXISTS my_team_picks (
+  account_id INTEGER NOT NULL,
+  gameweek_id INTEGER NOT NULL,
+  player_id INTEGER NOT NULL,
+  position INTEGER NOT NULL,
+  multiplier INTEGER NOT NULL DEFAULT 1,
+  is_captain INTEGER NOT NULL DEFAULT 0,
+  is_vice_captain INTEGER NOT NULL DEFAULT 0,
+  selling_price INTEGER,
+  purchase_price INTEGER,
+  PRIMARY KEY(account_id, gameweek_id, position),
+  FOREIGN KEY(account_id) REFERENCES my_team_accounts(id),
+  FOREIGN KEY(player_id) REFERENCES players(id)
+);
+
+CREATE TABLE IF NOT EXISTS my_team_transfers (
+  account_id INTEGER NOT NULL,
+  transfer_id TEXT NOT NULL,
+  gameweek_id INTEGER,
+  transferred_at TEXT NOT NULL,
+  player_in_id INTEGER NOT NULL,
+  player_out_id INTEGER NOT NULL,
+  player_in_cost INTEGER NOT NULL DEFAULT 0,
+  player_out_cost INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY(account_id, transfer_id),
+  FOREIGN KEY(account_id) REFERENCES my_team_accounts(id),
+  FOREIGN KEY(player_in_id) REFERENCES players(id),
+  FOREIGN KEY(player_out_id) REFERENCES players(id)
+);
+
+CREATE TABLE IF NOT EXISTS my_team_sync_status (
+  account_id INTEGER PRIMARY KEY,
+  last_full_snapshot TEXT,
+  last_gameweek_snapshot TEXT,
+  last_synced_at TEXT,
+  last_error TEXT,
+  FOREIGN KEY(account_id) REFERENCES my_team_accounts(id)
+);
 `;

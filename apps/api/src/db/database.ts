@@ -199,6 +199,17 @@ export function createDatabase(dbPath = env.dbPath) {
     { name: "requested_snapshot", sql: "requested_snapshot TEXT" },
     { name: "completed_snapshot", sql: "completed_snapshot TEXT" },
   ]);
+  ensureColumns(db, "my_team_accounts", [
+    { name: "manager_id", sql: "manager_id INTEGER" },
+    { name: "entry_id", sql: "entry_id INTEGER" },
+    { name: "player_first_name", sql: "player_first_name TEXT" },
+    { name: "player_last_name", sql: "player_last_name TEXT" },
+    { name: "player_region_name", sql: "player_region_name TEXT" },
+    { name: "team_name", sql: "team_name TEXT" },
+    { name: "auth_status", sql: "auth_status TEXT NOT NULL DEFAULT 'linked'" },
+    { name: "auth_error", sql: "auth_error TEXT" },
+    { name: "last_authenticated_at", sql: "last_authenticated_at TEXT" },
+  ]);
   backfillDerivedPerformanceColumns(db);
   return db;
 }

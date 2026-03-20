@@ -13,6 +13,8 @@
     "dev:api": "npm run dev -w @fpl/api",
     "dev:web": "npm run dev -w @fpl/web",
     "sync": "npm run sync -w @fpl/api --",
+    "link:my-team": "npm run link:my-team -w @fpl/api --",
+    "sync:my-team": "npm run sync:my-team -w @fpl/api --",
     "test": "npm run test --workspaces",
     "test:watch": "npm run test:watch --workspaces"
   },
