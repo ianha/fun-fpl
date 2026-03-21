@@ -142,6 +142,14 @@ export type MyTeamPick = {
   player: PlayerCard;
   role: "starter" | "bench";
   benchOrder: number | null;
+  gwPoints?: number;
+};
+
+export type MyTeamGameweekPicksResponse = {
+  gameweek: number;
+  picks: MyTeamPick[];
+  totalPoints: number;
+  pointsOnBench: number;
 };
 
 export type MyTeamTransfer = {

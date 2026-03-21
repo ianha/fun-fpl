@@ -56,6 +56,16 @@ export function createApiRouter(db: AppDatabase) {
     res.json(queryService.getMyTeamAccounts());
   });
 
+  router.get("/my-team/picks", (req, res) => {
+    const accountId = req.query.accountId ? Number(req.query.accountId) : undefined;
+    const gameweek = req.query.gameweek ? Number(req.query.gameweek) : undefined;
+    if (!accountId || !gameweek) {
+      res.status(400).json({ message: "accountId and gameweek are required" });
+      return;
+    }
+    res.json(queryService.getMyTeamPicksForGameweek(accountId, gameweek));
+  });
+
   router.get("/my-team", (req, res) => {
     const accountId = req.query.accountId ? Number(req.query.accountId) : undefined;
     res.json(queryService.getMyTeam(accountId));

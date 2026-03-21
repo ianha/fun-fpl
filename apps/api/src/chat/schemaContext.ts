@@ -73,6 +73,52 @@ const COLUMN_ANNOTATIONS: Readonly<Record<string, Record<string, string>>> = {
   positions: {
     id: "1=GKP (Goalkeeper), 2=DEF (Defender), 3=MID (Midfielder), 4=FWD (Forward)",
   },
+  my_team_accounts: {
+    entry_id:               "FPL entry/team ID used in API calls",
+    auth_status:            "linked=active | error=needs relink",
+    encrypted_credentials:  "AES-encrypted login credentials — never expose",
+  },
+  my_team_gameweeks: {
+    account_id:            "References my_team_accounts.id",
+    gameweek_id:           "References gameweeks.id",
+    points:                "GW points scored (transfer hits already deducted, recomputed from live data after sync)",
+    total_points:          "Cumulative season total at end of this GW",
+    overall_rank:          "Season-wide rank after this GW",
+    rank:                  "GW-specific rank",
+    bank:                  "ITB (in the bank) in tenths of £1m",
+    value:                 "Squad value in tenths of £1m",
+    event_transfers:       "Number of transfers made this GW",
+    event_transfers_cost:  "Points deducted for extra transfers (4 per hit)",
+    points_on_bench:       "Points left on bench (not counting toward total)",
+    active_chip:           "Chip played this GW, or NULL",
+  },
+  my_team_picks: {
+    account_id:      "References my_team_accounts.id",
+    gameweek_id:     "References gameweeks.id",
+    player_id:       "References players.id",
+    position:        "Slot 1–11 = starters, 12–15 = bench",
+    multiplier:      "Points multiplier: 2 = captain, 3 = triple captain, 0 = bench",
+    is_captain:      "1 if this player is captain",
+    is_vice_captain: "1 if this player is vice-captain",
+    selling_price:   "Current sell price in tenths of £1m",
+    purchase_price:  "Price paid in tenths of £1m",
+    gw_points:       "Live/final points for this player in this GW (from FPL live endpoint, updated on sync)",
+  },
+  my_team_transfers: {
+    account_id:      "References my_team_accounts.id",
+    gameweek_id:     "GW in which the transfer was made",
+    player_in_id:    "Player brought in — references players.id",
+    player_out_id:   "Player sold — references players.id",
+    player_in_cost:  "Buy price in tenths of £1m",
+    player_out_cost: "Sell price in tenths of £1m",
+  },
+  my_team_seasons: {
+    account_id:     "References my_team_accounts.id",
+    season_name:    "Season label e.g. '2024/25'",
+    total_points:   "Final season total",
+    overall_rank:   "Final overall rank",
+    rank:           "Final season rank",
+  },
 };
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -135,6 +181,13 @@ player_history(player_id→players, round, opponent_team→teams, was_home, kick
 fixtures(id, event_id→gameweeks, team_h→teams, team_a→teams, team_h_score, team_a_score, kickoff_time, finished, started)
 player_future_fixtures(player_id→players, fixture_id→fixtures, event_id→gameweeks, team_h→teams, team_a→teams, finished)  — upcoming fixtures per player
 
+## My Team tables (personal FPL account data)
+my_team_accounts(id, email, team_name, player_first_name, player_last_name, entry_id, auth_status, updated_at)  — one row per linked FPL account
+my_team_gameweeks(account_id→my_team_accounts, gameweek_id→gameweeks, points, total_points, overall_rank, rank, bank, value, event_transfers, event_transfers_cost, points_on_bench, active_chip)  — per-GW history for each account
+my_team_picks(account_id→my_team_accounts, gameweek_id→gameweeks, player_id→players, position, multiplier, is_captain, is_vice_captain, selling_price, purchase_price, gw_points)  — squad picks per GW; position 1–11 = starters, 12–15 = bench
+my_team_transfers(account_id→my_team_accounts, gameweek_id, player_in_id→players, player_out_id→players, player_in_cost, player_out_cost, transferred_at)  — transfer history
+my_team_seasons(account_id→my_team_accounts, season_name, total_points, overall_rank, rank)  — past season summaries
+
 ## Column glossary
 now_cost: price in tenths of £1m (e.g. 65 = £6.5m)
 player_history.value: player price at that GW, same tenths scale
@@ -158,4 +211,11 @@ points_per_game: season avg FPL pts/game
 defensive_contribution: clearances + blocks + interceptions combined
 player_history.round: gameweek number (1–38)
 player_history.was_home: 1 = player's team was the home side, 0 = away
-fixtures.finished: 1 = match is complete; team_h_score/team_a_score are NULL if unplayed`;
+fixtures.finished: 1 = match is complete; team_h_score/team_a_score are NULL if unplayed
+my_team_picks.position: slot number — 1–11 are starting XI, 12–15 are bench
+my_team_picks.multiplier: 2 = captain (2× points), 3 = triple captain, 1 = normal, 0 = benched
+my_team_picks.gw_points: live/final points for that player in that GW; updated from FPL live endpoint on sync
+my_team_gameweeks.bank: in-the-bank value in tenths of £1m
+my_team_gameweeks.value: squad value in tenths of £1m
+my_team_gameweeks.event_transfers_cost: points deducted for transfer hits (4 pts per extra transfer)
+my_team_gameweeks.active_chip: e.g. 'bboost', 'wildcard', '3xc', 'freehit', or NULL`;

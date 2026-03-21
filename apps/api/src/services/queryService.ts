@@ -2,6 +2,7 @@ import type {
   FixtureCard,
   GameweekSummary,
   MyTeamAccountSummary,
+  MyTeamGameweekPicksResponse,
   MyTeamHistoryRow,
   MyTeamPageResponse,
   MyTeamPick,
@@ -444,7 +445,11 @@ export class QueryService {
     const transfers = this.db
       .prepare(
         `SELECT mt.transfer_id AS id, mt.gameweek_id AS gameweek, mt.transferred_at AS madeAt,
-                mt.player_in_cost AS incomingCost, mt.player_out_cost AS outgoingCost,
+                CASE
+                  WHEN ROW_NUMBER() OVER (PARTITION BY mt.account_id, mt.gameweek_id ORDER BY mt.transferred_at DESC)
+                       <= COALESCE(gw.event_transfers_cost / 4, 0)
+                  THEN 4 ELSE 0
+                END AS hitCost,
                 pin.id AS playerInId, pin.web_name AS playerInWebName, pin.first_name AS playerInFirstName, pin.second_name AS playerInSecondName,
                 tin.name AS playerInTeamName, tin.short_name AS playerInTeamShortName, pin.team_id AS playerInTeamId,
                 pin.image_path AS playerInImagePath, pin.position_id AS playerInPositionId, posin.name AS playerInPositionName,
@@ -484,6 +489,7 @@ export class QueryService {
          JOIN players pout ON pout.id = mt.player_out_id
          JOIN teams tout ON tout.id = pout.team_id
          JOIN positions posout ON posout.id = pout.position_id
+         LEFT JOIN my_team_gameweeks gw ON gw.account_id = mt.account_id AND gw.gameweek_id = mt.gameweek_id
          WHERE mt.account_id = ?
          ORDER BY mt.transferred_at DESC`,
       )
@@ -492,7 +498,7 @@ export class QueryService {
         id: row.id,
         gameweek: row.gameweek,
         madeAt: row.madeAt,
-        cost: Math.max(0, Math.round((row.incomingCost - row.outgoingCost) / 10)),
+        cost: row.hitCost ?? 0,
         playerIn: this.mapPlayerFromPrefix(row, "playerIn"),
         playerOut: this.mapPlayerFromPrefix(row, "playerOut"),
       })) as MyTeamTransfer[];
@@ -521,6 +527,112 @@ export class QueryService {
       transfers,
       seasons,
       history,
+    };
+  }
+
+  getMyTeamPicksForGameweek(accountId: number, gameweek: number): MyTeamGameweekPicksResponse {
+    const picks = (this.db
+      .prepare(
+        `SELECT
+           'pick-' || mp.position AS slotId,
+           mp.position,
+           mp.multiplier,
+           mp.is_captain AS isCaptain,
+           mp.is_vice_captain AS isViceCaptain,
+           mp.selling_price AS sellingPrice,
+           mp.purchase_price AS purchasePrice,
+           CASE WHEN mp.position <= 11 THEN 'starter' ELSE 'bench' END AS role,
+           CASE WHEN mp.position <= 11 THEN NULL ELSE mp.position - 11 END AS benchOrder,
+           COALESCE(mp.gw_points, ph.total_points, 0) AS gwPoints,
+           p.id, p.web_name AS webName, p.first_name AS firstName, p.second_name AS secondName,
+           p.team_id AS teamId, t.name AS teamName, t.short_name AS teamShortName,
+           p.image_path AS imagePath, p.position_id AS positionId, pos.name AS positionName,
+           p.now_cost AS nowCost, p.total_points AS totalPoints, p.form,
+           p.selected_by_percent AS selectedByPercent, p.points_per_game AS pointsPerGame,
+           p.goals_scored AS goalsScored, p.assists, p.clean_sheets AS cleanSheets,
+           p.minutes, p.bonus, p.bps, p.creativity, p.influence, p.threat,
+           p.ict_index AS ictIndex, p.expected_goals AS expectedGoals, p.expected_assists AS expectedAssists,
+           p.expected_goal_involvements AS expectedGoalInvolvements,
+           p.expected_goal_performance AS expectedGoalPerformance,
+           p.expected_assist_performance AS expectedAssistPerformance,
+           p.expected_goal_involvement_performance AS expectedGoalInvolvementPerformance,
+           p.expected_goals_conceded AS expectedGoalsConceded, p.clean_sheets_per_90 AS cleanSheetsPer90,
+           p.starts, p.tackles, p.recoveries, p.defensive_contribution AS defensiveContribution, p.status
+         FROM my_team_picks mp
+         JOIN players p ON p.id = mp.player_id
+         JOIN teams t ON t.id = p.team_id
+         JOIN positions pos ON pos.id = p.position_id
+         LEFT JOIN player_history ph ON ph.player_id = mp.player_id AND ph.round = mp.gameweek_id
+         WHERE mp.account_id = ? AND mp.gameweek_id = ?
+         ORDER BY mp.position`,
+      )
+      .all(accountId, gameweek)
+      .map((row: any) => ({
+        slotId: row.slotId,
+        position: row.position,
+        multiplier: row.multiplier,
+        isCaptain: mapBoolean(row.isCaptain),
+        isViceCaptain: mapBoolean(row.isViceCaptain),
+        sellingPrice: row.sellingPrice,
+        purchasePrice: row.purchasePrice,
+        role: row.role,
+        benchOrder: row.benchOrder,
+        gwPoints: row.gwPoints,
+        player: {
+          id: row.id,
+          webName: row.webName,
+          firstName: row.firstName,
+          secondName: row.secondName,
+          teamId: row.teamId,
+          teamName: row.teamName,
+          teamShortName: row.teamShortName,
+          imagePath: row.imagePath,
+          positionId: row.positionId,
+          positionName: row.positionName,
+          nowCost: row.nowCost,
+          totalPoints: row.totalPoints,
+          form: row.form,
+          selectedByPercent: row.selectedByPercent,
+          pointsPerGame: row.pointsPerGame,
+          goalsScored: row.goalsScored,
+          assists: row.assists,
+          cleanSheets: row.cleanSheets,
+          minutes: row.minutes,
+          bonus: row.bonus,
+          bps: row.bps,
+          creativity: row.creativity,
+          influence: row.influence,
+          threat: row.threat,
+          ictIndex: row.ictIndex,
+          expectedGoals: row.expectedGoals,
+          expectedAssists: row.expectedAssists,
+          expectedGoalInvolvements: row.expectedGoalInvolvements,
+          expectedGoalPerformance: row.expectedGoalPerformance,
+          expectedAssistPerformance: row.expectedAssistPerformance,
+          expectedGoalInvolvementPerformance: row.expectedGoalInvolvementPerformance,
+          expectedGoalsConceded: row.expectedGoalsConceded,
+          cleanSheetsPer90: row.cleanSheetsPer90,
+          starts: row.starts,
+          tackles: row.tackles,
+          recoveries: row.recoveries,
+          defensiveContribution: row.defensiveContribution,
+          status: row.status,
+        },
+      })) as MyTeamPick[]);
+
+    const gw = this.db
+      .prepare(
+        `SELECT points AS totalPoints, points_on_bench AS pointsOnBench
+         FROM my_team_gameweeks
+         WHERE account_id = ? AND gameweek_id = ?`,
+      )
+      .get(accountId, gameweek) as { totalPoints: number; pointsOnBench: number } | undefined;
+
+    return {
+      gameweek,
+      picks,
+      totalPoints: gw?.totalPoints ?? 0,
+      pointsOnBench: gw?.pointsOnBench ?? 0,
     };
   }
 

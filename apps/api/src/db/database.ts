@@ -210,6 +210,9 @@ export function createDatabase(dbPath = env.dbPath) {
     { name: "auth_error", sql: "auth_error TEXT" },
     { name: "last_authenticated_at", sql: "last_authenticated_at TEXT" },
   ]);
+  ensureColumns(db, "my_team_picks", [
+    { name: "gw_points", sql: "gw_points INTEGER" },
+  ]);
   backfillDerivedPerformanceColumns(db);
   return db;
 }

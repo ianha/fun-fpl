@@ -6,6 +6,7 @@ import type {
   TeamSummary,
   GameweekSummary,
   MyTeamPageResponse,
+  MyTeamGameweekPicksResponse,
 } from "@fpl/contracts";
 
 function resolveApiBaseUrl() {
@@ -116,4 +117,8 @@ export function linkMyTeamAccount(email: string, password: string, entryId?: num
 
 export function syncMyTeam(params?: { accountId?: number; gameweek?: number; force?: boolean }) {
   return requestWithBody<MyTeamPageResponse>("/my-team/sync", "POST", params ?? {});
+}
+
+export function getMyTeamGameweekPicks(accountId: number, gameweek: number) {
+  return request<MyTeamGameweekPicksResponse>(`/my-team/picks?accountId=${accountId}&gameweek=${gameweek}`);
 }

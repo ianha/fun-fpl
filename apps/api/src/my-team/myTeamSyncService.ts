@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import type { AppDatabase } from "../db/database.js";
+import { env } from "../config/env.js";
 import { decryptCredentials, encryptCredentials } from "./credentialStore.js";
 import { FplSessionClient } from "./fplSessionClient.js";
 
@@ -291,6 +292,36 @@ export class MyTeamSyncService {
               pick.selling_price,
               pick.purchase_price,
             );
+        }
+
+        // Fetch live GW points from the public FPL API and store per-player
+        try {
+          const liveRes = await fetch(`${env.baseUrl}/event/${gameweekId}/live/`);
+          if (liveRes.ok) {
+            const liveData = await liveRes.json() as { elements: Array<{ id: number; stats: { total_points: number } }> };
+            const pointsById = new Map(liveData.elements.map((e) => [e.id, e.stats.total_points]));
+            const upsertPoints = this.db.prepare(
+              `UPDATE my_team_picks SET gw_points = ? WHERE account_id = ? AND gameweek_id = ? AND player_id = ?`,
+            );
+            for (const pick of picks.picks) {
+              const pts = pointsById.get(pick.element);
+              if (pts !== undefined) {
+                upsertPoints.run(pts, accountId, gameweekId, pick.element);
+              }
+            }
+            // Recompute GW total from live points × multiplier so the stored value matches player cards
+            const totalPoints = picks.picks
+              .filter((p) => p.position <= 11)
+              .reduce((sum, p) => sum + (pointsById.get(p.element) ?? 0) * p.multiplier, 0);
+            const pointsOnBench = picks.picks
+              .filter((p) => p.position > 11)
+              .reduce((sum, p) => sum + (pointsById.get(p.element) ?? 0), 0);
+            this.db
+              .prepare(`UPDATE my_team_gameweeks SET points = ?, points_on_bench = ? WHERE account_id = ? AND gameweek_id = ?`)
+              .run(totalPoints, pointsOnBench, accountId, gameweekId);
+          }
+        } catch {
+          // live points are best-effort; don't fail the sync
         }
       }
 
