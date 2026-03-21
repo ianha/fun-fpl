@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { motion, useMotionValue, useMotionTemplate, animate } from "framer-motion";
+import { motion, MotionConfig, useMotionValue, useMotionTemplate, animate } from "framer-motion";
 import type { OverviewResponse } from "@fpl/contracts";
 import { getOverview, resolveAssetUrl } from "@/api/client";
 import { formatCost } from "@/lib/format";
@@ -29,8 +29,14 @@ const POSITION_LABELS: Record<number, { short: string; color: string }> = {
 };
 
 
+let _dashboardCache: OverviewResponse | null = null;
+
 export function Dashboard() {
-  const [state, setState] = useState<AsyncState<OverviewResponse>>({ status: "loading" });
+  const [state, setState] = useState<AsyncState<OverviewResponse>>(
+    () => _dashboardCache ? { status: "ready", data: _dashboardCache } : { status: "loading" }
+  );
+  // Skip entrance animations when data was already in cache at mount time
+  const noAnim = useRef(state.status === "ready").current;
   const color = useMotionValue("#a855f7");
 
   useEffect(() => {
@@ -45,8 +51,12 @@ export function Dashboard() {
   const backgroundImage = useMotionTemplate`radial-gradient(125% 125% at 50% 0%, #0d0118 50%, ${color})`;
 
   useEffect(() => {
+    if (_dashboardCache) return;
     getOverview()
-      .then((data) => setState({ status: "ready", data }))
+      .then((data) => {
+        _dashboardCache = data;
+        setState({ status: "ready", data });
+      })
       .catch((e) => setState({ status: "error", message: e.message }));
   }, []);
 
@@ -108,6 +118,7 @@ export function Dashboard() {
   ];
 
   return (
+    <MotionConfig skipAnimations={noAnim}>
     <motion.div
       style={{ backgroundImage }}
       className="min-h-screen w-full text-white relative overflow-x-hidden"
@@ -327,5 +338,6 @@ export function Dashboard() {
         </div>
       </div>
     </motion.div>
+    </MotionConfig>
   );
 }

@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { motion, useMotionValue, useMotionTemplate, animate } from "framer-motion";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useSearchParams } from "react-router-dom";
+import { motion, MotionConfig, useMotionValue, useMotionTemplate, animate } from "framer-motion";
 import { ArrowRightLeft, Coins, Crown, RefreshCcw, Shield, ShieldAlert, Sparkles, Trophy, Wand2, Zap } from "lucide-react";
 import type { MyTeamGameweekPicksResponse, MyTeamPageResponse, MyTeamPick, PlayerCard } from "@fpl/contracts";
 import { getMyTeam, getMyTeamGameweekPicks, getPlayers, linkMyTeamAccount, resolveAssetUrl, syncMyTeam } from "@/api/client";
@@ -66,6 +67,41 @@ function toSquadEntry(pick: MyTeamPick): SquadEntry {
     isCaptain: pick.isCaptain,
     isViceCaptain: pick.isViceCaptain,
   };
+}
+
+// Module-level cache — persists across page navigations within the same tab session
+type MyTeamCache = {
+  state: { status: "ready"; payload: MyTeamPageResponse; allPlayers: PlayerCard[] };
+  selectedAccountId: number | null;
+  email: string;
+  entryIdInput: string;
+  selectedGameweek: string;
+  selectedChip: PlannerChip;
+  viewGameweek: number | null;
+  historicalData: MyTeamGameweekPicksResponse | null;
+  workingSquad: SquadEntry[];
+};
+const _myTeamCache = new Map<string, MyTeamCache>();
+const _myTeamHistoricalCache = new Map<string, MyTeamGameweekPicksResponse>();
+let _myTeamSavedParams = "";
+
+function getSavedParam(key: string): string {
+  if (!_myTeamSavedParams) return "";
+  return new URLSearchParams(_myTeamSavedParams).get(key) ?? "";
+}
+
+function parseNullableNumber(value: string | null): number | null {
+  if (!value) return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function getMyTeamCacheKey(accountId: number | null | undefined): string {
+  return accountId === null || accountId === undefined ? "default" : String(accountId);
+}
+
+function getHistoricalCacheKey(accountId: number, gameweek: number): string {
+  return `${accountId}|${gameweek}`;
 }
 
 function StatCard({
@@ -185,19 +221,55 @@ function PitchPlayerCard({
 }
 
 export function MyTeamPage() {
-  const [state, setState] = useState<AsyncState>({ status: "loading" });
-  const [selectedAccountId, setSelectedAccountId] = useState<number | null>(null);
-  const [selectedGameweek, setSelectedGameweek] = useState("");
-  const [selectedChip, setSelectedChip] = useState<PlannerChip>("none");
-  const [workingSquad, setWorkingSquad] = useState<SquadEntry[]>([]);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const initialAccountId = parseNullableNumber(searchParams.get("accountId") ?? getSavedParam("accountId"));
+  const initialSelectedGameweek = searchParams.get("planGW") ?? getSavedParam("planGW");
+  const initialSelectedChip = (searchParams.get("chip") ?? getSavedParam("chip")) as PlannerChip | "";
+  const initialViewGameweek = parseNullableNumber(searchParams.get("viewGW") ?? getSavedParam("viewGW"));
+  const initialCache = _myTeamCache.get(getMyTeamCacheKey(initialAccountId));
+  const [state, setState] = useState<AsyncState>(() =>
+    initialCache?.state ?? { status: "loading" },
+  );
+  // Skip entrance animations when data was already in cache at mount time
+  const noAnim = useRef(state.status === "ready").current;
+  const [selectedAccountId, setSelectedAccountId] = useState<number | null>(
+    () => initialAccountId ?? initialCache?.selectedAccountId ?? null,
+  );
+  const [selectedGameweek, setSelectedGameweek] = useState(() => initialSelectedGameweek || initialCache?.selectedGameweek || "");
+  const [selectedChip, setSelectedChip] = useState<PlannerChip>(
+    () => (initialSelectedChip || initialCache?.selectedChip || "none") as PlannerChip,
+  );
+  const [workingSquad, setWorkingSquad] = useState<SquadEntry[]>(() => initialCache?.workingSquad ?? []);
   const [selectedSlotId, setSelectedSlotId] = useState<string | null>(null);
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState(() => initialCache?.email ?? "");
   const [password, setPassword] = useState("");
-  const [entryIdInput, setEntryIdInput] = useState("");
+  const [entryIdInput, setEntryIdInput] = useState(() => initialCache?.entryIdInput ?? "");
   const [submitting, setSubmitting] = useState(false);
-  const [viewGameweek, setViewGameweek] = useState<number | null>(null);
-  const [historicalData, setHistoricalData] = useState<MyTeamGameweekPicksResponse | null>(null);
+  const [viewGameweek, setViewGameweek] = useState<number | null>(
+    () => initialViewGameweek ?? initialCache?.viewGameweek ?? null,
+  );
+  const [historicalData, setHistoricalData] = useState<MyTeamGameweekPicksResponse | null>(
+    () => {
+      if (initialAccountId !== null && initialViewGameweek !== null) {
+        return _myTeamHistoricalCache.get(getHistoricalCacheKey(initialAccountId, initialViewGameweek)) ?? initialCache?.historicalData ?? null;
+      }
+      return initialCache?.historicalData ?? null;
+    },
+  );
   const [historicalLoading, setHistoricalLoading] = useState(false);
+
+  function applyCachedPage(cache: MyTeamCache) {
+    setState(cache.state);
+    setSelectedAccountId(cache.selectedAccountId);
+    setEmail(cache.email);
+    setEntryIdInput(cache.entryIdInput);
+    setSelectedGameweek(cache.selectedGameweek);
+    setSelectedChip(cache.selectedChip);
+    setWorkingSquad(cache.workingSquad);
+    setSelectedSlotId(null);
+    setViewGameweek(cache.viewGameweek);
+    setHistoricalData(cache.historicalData);
+  }
 
   // Animated background — same cycling gradient as Dashboard
   const color = useMotionValue("#a855f7");
@@ -220,7 +292,7 @@ export function MyTeamPage() {
           : undefined;
       await linkMyTeamAccount(emailValue, passwordValue, parsedEntryId);
       setPassword("");
-      await load(selectedAccountId ?? undefined);
+      await load(selectedAccountId ?? undefined, true);
     } catch (error) {
       setState({
         status: "error",
@@ -231,35 +303,78 @@ export function MyTeamPage() {
     }
   }
 
-  async function load(accountId?: number) {
+  async function load(accountId?: number, skipCache = false) {
+    const requestedAccountId = accountId ?? null;
+    const cacheKey = getMyTeamCacheKey(requestedAccountId);
+    const cached = !skipCache ? _myTeamCache.get(cacheKey) : undefined;
+    if (cached) {
+      applyCachedPage(cached);
+      return;
+    }
+
     try {
       const [payload, allPlayers] = await Promise.all([getMyTeam(accountId), getPlayers()]);
-      setState({ status: "ready", payload, allPlayers });
+      const readyState = { status: "ready" as const, payload, allPlayers };
+      setState(readyState);
       const resolvedAccountId = payload.selectedAccountId ?? payload.accounts[0]?.id ?? null;
       setSelectedAccountId(resolvedAccountId);
-      setEmail(
+      const resolvedEmail =
         payload.accounts.find((account) => account.id === resolvedAccountId)?.email ??
-          payload.accounts[0]?.email ??
+        payload.accounts[0]?.email ??
+        "";
+      setEmail(resolvedEmail);
+      const resolvedEntryId = String(
+        payload.accounts.find((account) => account.id === resolvedAccountId)?.entryId ??
+          payload.accounts[0]?.entryId ??
           "",
       );
-      setEntryIdInput(
-        String(
-          payload.accounts.find((account) => account.id === resolvedAccountId)?.entryId ??
-            payload.accounts[0]?.entryId ??
-            "",
-        ),
-      );
-      setSelectedGameweek(String(payload.currentGameweek ?? 1));
-      setWorkingSquad(payload.picks.map(toSquadEntry));
+      setEntryIdInput(resolvedEntryId);
+      const resolvedGameweek = selectedGameweek || String(payload.currentGameweek ?? 1);
+      setSelectedGameweek(resolvedGameweek);
+      const squad = payload.picks.map(toSquadEntry);
+      setWorkingSquad(squad);
       setSelectedSlotId(null);
-      setSelectedChip("none");
+      const resolvedChip = selectedChip || "none";
+      setSelectedChip(resolvedChip);
       const currentGw = payload.currentGameweek ?? null;
-      setViewGameweek(currentGw);
-      setHistoricalData(null);
-      if (currentGw && resolvedAccountId) {
+      const resolvedViewGameweek = viewGameweek ?? currentGw;
+      setViewGameweek(resolvedViewGameweek);
+
+      const cachedHistorical =
+        resolvedAccountId !== null && resolvedViewGameweek !== null
+          ? _myTeamHistoricalCache.get(getHistoricalCacheKey(resolvedAccountId, resolvedViewGameweek)) ?? null
+          : null;
+      setHistoricalData(cachedHistorical);
+
+      // Populate module-level cache so navigating away and back skips the API call
+      const cacheEntry = {
+        state: readyState,
+        selectedAccountId: resolvedAccountId,
+        email: resolvedEmail,
+        entryIdInput: resolvedEntryId,
+        selectedGameweek: resolvedGameweek,
+        selectedChip: resolvedChip,
+        viewGameweek: resolvedViewGameweek,
+        historicalData: cachedHistorical,
+        workingSquad: squad,
+      };
+      _myTeamCache.set(cacheKey, cacheEntry);
+      if (resolvedAccountId !== null) {
+        _myTeamCache.set(getMyTeamCacheKey(resolvedAccountId), cacheEntry);
+      }
+
+      if (resolvedViewGameweek && resolvedAccountId && !cachedHistorical) {
         setHistoricalLoading(true);
-        getMyTeamGameweekPicks(resolvedAccountId, currentGw)
-          .then(setHistoricalData)
+        getMyTeamGameweekPicks(resolvedAccountId, resolvedViewGameweek)
+          .then((data) => {
+            setHistoricalData(data);
+            _myTeamHistoricalCache.set(getHistoricalCacheKey(resolvedAccountId, resolvedViewGameweek), data);
+            const refreshedEntry = _myTeamCache.get(getMyTeamCacheKey(resolvedAccountId));
+            if (refreshedEntry) {
+              refreshedEntry.historicalData = data;
+              _myTeamCache.set(getMyTeamCacheKey(resolvedAccountId), refreshedEntry);
+            }
+          })
           .catch(() => {})
           .finally(() => setHistoricalLoading(false));
       }
@@ -273,18 +388,74 @@ export function MyTeamPage() {
 
   async function selectViewGameweek(gw: number, accountId: number, _currentGw: number) {
     setViewGameweek(gw);
+    const cacheEntry = _myTeamCache.get(getMyTeamCacheKey(accountId));
+    if (cacheEntry) {
+      cacheEntry.viewGameweek = gw;
+      _myTeamCache.set(getMyTeamCacheKey(accountId), cacheEntry);
+    }
+    const cached = _myTeamHistoricalCache.get(getHistoricalCacheKey(accountId, gw));
+    if (cached) {
+      setHistoricalData(cached);
+      setHistoricalLoading(false);
+      return;
+    }
     setHistoricalLoading(true);
     try {
       const data = await getMyTeamGameweekPicks(accountId, gw);
       setHistoricalData(data);
+      _myTeamHistoricalCache.set(getHistoricalCacheKey(accountId, gw), data);
+      const refreshedEntry = _myTeamCache.get(getMyTeamCacheKey(accountId));
+      if (refreshedEntry) {
+        refreshedEntry.historicalData = data;
+        _myTeamCache.set(getMyTeamCacheKey(accountId), refreshedEntry);
+      }
     } finally {
       setHistoricalLoading(false);
     }
   }
 
   useEffect(() => {
-    load();
-  }, []);
+    if (state.status === "ready") return;
+    load(selectedAccountId ?? undefined);
+  }, [state.status, selectedAccountId]);
+
+  useEffect(() => {
+    const params = new URLSearchParams();
+    if (selectedAccountId !== null) params.set("accountId", String(selectedAccountId));
+    if (selectedGameweek) params.set("planGW", selectedGameweek);
+    if (viewGameweek !== null) params.set("viewGW", String(viewGameweek));
+    if (selectedChip !== "none") params.set("chip", selectedChip);
+    _myTeamSavedParams = params.toString();
+    setSearchParams(params, { replace: true });
+  }, [selectedAccountId, selectedGameweek, viewGameweek, selectedChip, setSearchParams]);
+
+  useEffect(() => {
+    if (state.status !== "ready") return;
+    const cacheKey = getMyTeamCacheKey(selectedAccountId);
+    const existing = _myTeamCache.get(cacheKey);
+    if (!existing) return;
+    _myTeamCache.set(cacheKey, {
+      ...existing,
+      selectedAccountId,
+      email,
+      entryIdInput,
+      selectedGameweek,
+      selectedChip,
+      viewGameweek,
+      historicalData,
+      workingSquad,
+    });
+  }, [
+    state,
+    selectedAccountId,
+    email,
+    entryIdInput,
+    selectedGameweek,
+    selectedChip,
+    viewGameweek,
+    historicalData,
+    workingSquad,
+  ]);
 
   const payload = state.status === "ready" ? state.payload : null;
   const selectedAccount =
@@ -405,6 +576,7 @@ export function MyTeamPage() {
   }
 
   return (
+    <MotionConfig skipAnimations={noAnim}>
     <motion.div style={{ backgroundImage }} className="relative min-h-screen w-full overflow-x-hidden text-white">
       <BGPattern variant="grid" mask="fade-edges" className="opacity-40" />
 
@@ -661,7 +833,7 @@ export function MyTeamPage() {
                       setSubmitting(true);
                       try {
                         await syncMyTeam({ accountId: selectedAccount.id });
-                        await load(selectedAccount.id);
+                        await load(selectedAccount.id, true);
                       } finally {
                         setSubmitting(false);
                       }
@@ -810,5 +982,6 @@ export function MyTeamPage() {
 
       </div>
     </motion.div>
+    </MotionConfig>
   );
 }

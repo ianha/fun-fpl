@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams, Link } from "react-router-dom";
-import { motion } from "framer-motion";
+import { motion, MotionConfig } from "framer-motion";
 import type { PlayerCard, FixtureCard, TeamSummary } from "@fpl/contracts";
 import { getOverview, getPlayers, getFixtures, resolveAssetUrl } from "@/api/client";
 import { formatCost } from "@/lib/format";
@@ -25,13 +25,26 @@ interface TeamData {
   upcomingFixtures: FixtureCard[];
 }
 
+const _teamDetailCache = new Map<number, TeamData>();
+
 export function TeamDetailPage() {
   const { id } = useParams<{ id: string }>();
-  const [state, setState] = useState<AsyncState<TeamData>>({ status: "loading" });
+  const [state, setState] = useState<AsyncState<TeamData>>(() => {
+    const numId = Number(id);
+    const cached = _teamDetailCache.get(numId);
+    return cached ? { status: "ready", data: cached } : { status: "loading" };
+  });
+  // Skip entrance animations when data was already in cache at mount time
+  const noAnim = useRef(state.status === "ready").current;
 
   useEffect(() => {
     if (!id) return;
     const teamId = Number(id);
+    const cached = _teamDetailCache.get(teamId);
+    if (cached) {
+      setState({ status: "ready", data: cached });
+      return;
+    }
     setState({ status: "loading" });
 
     Promise.all([
@@ -45,14 +58,9 @@ export function TeamDetailPage() {
           setState({ status: "error", message: "Team not found" });
           return;
         }
-        setState({
-          status: "ready",
-          data: {
-            team,
-            players,
-            upcomingFixtures: fixtures.filter((f) => !f.finished),
-          },
-        });
+        const data = { team, players, upcomingFixtures: fixtures.filter((f) => !f.finished) };
+        _teamDetailCache.set(teamId, data);
+        setState({ status: "ready", data });
       })
       .catch((e) => setState({ status: "error", message: e.message }));
   }, [id]);
@@ -89,6 +97,7 @@ export function TeamDetailPage() {
     .filter((g) => g.players.length > 0);
 
   return (
+    <MotionConfig skipAnimations={noAnim}>
     <div className="relative min-h-screen text-white">
       <BGPattern variant="grid" mask="fade-edges" />
 
@@ -271,5 +280,6 @@ export function TeamDetailPage() {
         )}
       </div>
     </div>
+    </MotionConfig>
   );
 }

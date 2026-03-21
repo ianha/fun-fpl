@@ -64,15 +64,30 @@ function CustomTooltip({ active, payload, label }: any) {
   );
 }
 
+const _playerDetailCache = new Map<number, PlayerDetail>();
+
 export function PlayerDetailPage() {
   const { id } = useParams<{ id: string }>();
-  const [state, setState] = useState<AsyncState<PlayerDetail>>({ status: "loading" });
+  const [state, setState] = useState<AsyncState<PlayerDetail>>(() => {
+    const numId = Number(id);
+    const cached = _playerDetailCache.get(numId);
+    return cached ? { status: "ready", data: cached } : { status: "loading" };
+  });
 
   useEffect(() => {
     if (!id) return;
+    const numId = Number(id);
+    const cached = _playerDetailCache.get(numId);
+    if (cached) {
+      setState({ status: "ready", data: cached });
+      return;
+    }
     setState({ status: "loading" });
-    getPlayer(Number(id))
-      .then((data) => setState({ status: "ready", data }))
+    getPlayer(numId)
+      .then((data) => {
+        _playerDetailCache.set(numId, data);
+        setState({ status: "ready", data });
+      })
       .catch((e) => setState({ status: "error", message: e.message }));
   }, [id]);
 

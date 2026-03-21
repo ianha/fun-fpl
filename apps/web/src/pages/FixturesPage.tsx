@@ -1,5 +1,6 @@
-import { useEffect, useState, useCallback } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { useEffect, useRef, useState, useCallback } from "react";
+import { useSearchParams } from "react-router-dom";
+import { motion, AnimatePresence, MotionConfig } from "framer-motion";
 import type { FixtureCard, GameweekSummary, TeamSummary } from "@fpl/contracts";
 import { getOverview, getFixtures } from "@/api/client";
 import { Calendar, ChevronLeft, ChevronRight, Shield } from "lucide-react";
@@ -10,34 +11,73 @@ type AsyncState<T> =
   | { status: "error"; message: string }
   | { status: "ready"; data: T };
 
-export function FixturesPage() {
-  const [gameweeks, setGameweeks] = useState<GameweekSummary[]>([]);
-  const [teams, setTeams] = useState<TeamSummary[]>([]);
-  const [fixturesState, setFixturesState] = useState<AsyncState<FixtureCard[]>>({ status: "loading" });
-  const [selectedGW, setSelectedGW] = useState<number | null>(null);
-  const [selectedTeam, setSelectedTeam] = useState<number | null>(null);
+type FixturesOverviewCache = { gameweeks: GameweekSummary[]; teams: TeamSummary[] };
+let _fixturesOverviewCache: FixturesOverviewCache | null = null;
+const _fixturesDataCache = new Map<string, FixtureCard[]>();
+let _fixturesSavedParams = "";
 
-  // Load overview (gameweeks + teams) on mount
+function getSavedParam(key: string): string {
+  if (!_fixturesSavedParams) return "";
+  return new URLSearchParams(_fixturesSavedParams).get(key) ?? "";
+}
+
+function parseNullableNumber(value: string | null): number | null {
+  if (!value) return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+export function FixturesPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const initialGW = parseNullableNumber(searchParams.get("gw") ?? getSavedParam("gw"));
+  const initialTeam = parseNullableNumber(searchParams.get("team") ?? getSavedParam("team"));
+  const initialKey = `${initialGW ?? ""}-${initialTeam ?? ""}`;
+  const [gameweeks, setGameweeks] = useState<GameweekSummary[]>(_fixturesOverviewCache?.gameweeks ?? []);
+  const [teams, setTeams] = useState<TeamSummary[]>(_fixturesOverviewCache?.teams ?? []);
+  const [selectedGW, setSelectedGW] = useState<number | null>(initialGW);
+  const [selectedTeam, setSelectedTeam] = useState<number | null>(initialTeam);
+  const [fixturesState, setFixturesState] = useState<AsyncState<FixtureCard[]>>(() => {
+    const cached = _fixturesDataCache.get(initialKey);
+    return cached ? { status: "ready", data: cached } : { status: "loading" };
+  });
+  // Skip entrance animations when data was already in cache at mount time
+  const noAnim = useRef(fixturesState.status === "ready").current;
+
+  // Load overview (gameweeks + teams) on mount — skip if already cached
   useEffect(() => {
+    if (_fixturesOverviewCache) return;
     getOverview().then((data) => {
+      _fixturesOverviewCache = { gameweeks: data.gameweeks, teams: data.teams };
       setGameweeks(data.gameweeks);
       setTeams(data.teams);
-      const currentGW =
-        data.gameweeks.find((gw) => gw.isCurrent) ??
-        data.gameweeks.find((gw) => !gw.isFinished) ??
-        data.gameweeks[0];
-      if (currentGW) setSelectedGW(currentGW.id);
+      // Only set default GW if nothing was previously selected
+      if (initialGW === null) {
+        const currentGW =
+          data.gameweeks.find((gw) => gw.isCurrent) ??
+          data.gameweeks.find((gw) => !gw.isFinished) ??
+          data.gameweeks[0];
+        if (currentGW) setSelectedGW(currentGW.id);
+      }
     });
-  }, []);
+  }, [initialGW]);
 
-  // Load fixtures when gameweek or team filter changes
+  // Load fixtures when gameweek or team filter changes — check cache first
   const loadFixtures = useCallback((gwId: number | null, teamId: number | null) => {
+    const key = `${gwId ?? ""}-${teamId ?? ""}`;
+    const cached = _fixturesDataCache.get(key);
+    if (cached) {
+      setFixturesState({ status: "ready", data: cached });
+      return;
+    }
     setFixturesState({ status: "loading" });
     getFixtures({
       event: gwId ?? undefined,
       team: teamId ?? undefined,
     })
-      .then((data) => setFixturesState({ status: "ready", data }))
+      .then((data) => {
+        _fixturesDataCache.set(key, data);
+        setFixturesState({ status: "ready", data });
+      })
       .catch((e) => setFixturesState({ status: "error", message: e.message }));
   }, []);
 
@@ -47,11 +87,20 @@ export function FixturesPage() {
     }
   }, [selectedGW, selectedTeam, loadFixtures]);
 
+  useEffect(() => {
+    const params = new URLSearchParams();
+    if (selectedGW !== null) params.set("gw", String(selectedGW));
+    if (selectedTeam !== null) params.set("team", String(selectedTeam));
+    _fixturesSavedParams = params.toString();
+    setSearchParams(params, { replace: true });
+  }, [selectedGW, selectedTeam, setSearchParams]);
+
   const currentGWIndex = gameweeks.findIndex((gw) => gw.id === selectedGW);
   const currentGW = gameweeks[currentGWIndex];
   const fixtures = fixturesState.status === "ready" ? fixturesState.data : [];
 
   return (
+    <MotionConfig skipAnimations={noAnim}>
     <div className="relative min-h-screen text-white">
       <BGPattern variant="dots" mask="fade-edges" />
 
@@ -234,5 +283,6 @@ export function FixturesPage() {
         )}
       </div>
     </div>
+    </MotionConfig>
   );
 }

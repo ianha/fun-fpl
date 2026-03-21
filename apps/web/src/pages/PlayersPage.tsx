@@ -13,7 +13,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
-import { Search, Users, ChevronUp, ChevronDown, ChevronsUpDown } from "lucide-react";
+import { Search, Users, ChevronUp, ChevronDown, ChevronsUpDown, RefreshCw, RotateCcw } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 type AsyncState<T> =
   | { status: "loading" }
@@ -21,6 +22,17 @@ type AsyncState<T> =
   | { status: "ready"; data: T };
 
 type SortDir = "asc" | "desc";
+
+const _playersDataCache = new Map<string, PlayerCard[]>();
+let _savedParams = ""; // always up-to-date filter/sort URL string, even before first fetch completes
+let _teamsCache: TeamSummary[] | null = null;
+let _gameweeksCache: GameweekSummary[] | null = null;
+let _latestFetchId = 0; // increments on every fetchPlayers call; stale responses are discarded
+
+function getSavedParam(key: string, fallback = ""): string {
+  if (!_savedParams) return fallback;
+  return new URLSearchParams(_savedParams).get(key) ?? fallback;
+}
 
 const POSITIONS: Record<number, { label: string; short: string; color: string }> = {
   1: { label: "Goalkeeper", short: "GKP", color: "bg-yellow-500/15 text-yellow-400 border-yellow-500/25" },
@@ -103,6 +115,10 @@ function StatusDot({ status }: { status: string }) {
   );
 }
 
+function getPlayersParamsKey(q: string, pos: string, tm: string, fgw: string, tgw: string): string {
+  return [q || "", pos, tm, fgw, tgw].join("|");
+}
+
 function ColHeader({
   col, sortCol, sortDir, onSort,
   className,
@@ -139,21 +155,25 @@ export function PlayersPage() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
 
-  const [search, setSearch] = useState(searchParams.get("q") ?? "");
-  const [position, setPosition] = useState(searchParams.get("position") ?? "all");
-  const [team, setTeam] = useState(searchParams.get("team") ?? "all");
-  const [statusFilter, setStatusFilter] = useState(searchParams.get("status") ?? "all");
-  const [minPrice, setMinPrice] = useState(searchParams.get("minPrice") ?? "");
-  const [maxPrice, setMaxPrice] = useState(searchParams.get("maxPrice") ?? "");
-  const [minMinutes, setMinMinutes] = useState(searchParams.get("minMin") ?? "");
-  const [sortCol, setSortCol] = useState<string>("totalPoints");
-  const [sortDir, setSortDir] = useState<SortDir>("desc");
+  const [search, setSearch] = useState(() => searchParams.get("q") ?? getSavedParam("q"));
+  const [position, setPosition] = useState(() => searchParams.get("position") ?? getSavedParam("position", "all"));
+  const [team, setTeam] = useState(() => searchParams.get("team") ?? getSavedParam("team", "all"));
+  const [statusFilter, setStatusFilter] = useState(() => searchParams.get("status") ?? getSavedParam("status", "all"));
+  const [minPrice, setMinPrice] = useState(() => searchParams.get("minPrice") ?? getSavedParam("minPrice"));
+  const [maxPrice, setMaxPrice] = useState(() => searchParams.get("maxPrice") ?? getSavedParam("maxPrice"));
+  const [minMinutes, setMinMinutes] = useState(() => searchParams.get("minMin") ?? getSavedParam("minMin"));
+  const [sortCol, setSortCol] = useState<string>(() => searchParams.get("col") ?? getSavedParam("col", "totalPoints"));
+  const [sortDir, setSortDir] = useState<SortDir>(() => (searchParams.get("dir") ?? getSavedParam("dir", "desc")) as SortDir);
+  const [fromGW, setFromGW] = useState<string>(() => searchParams.get("fromGW") ?? getSavedParam("fromGW"));
+  const [toGW, setToGW] = useState<string>(() => searchParams.get("toGW") ?? getSavedParam("toGW"));
+  const currentParamsKey = getPlayersParamsKey(search, position, team, fromGW, toGW);
 
-  const [state, setState] = useState<AsyncState<PlayerCard[]>>({ status: "loading" });
-  const [teams, setTeams] = useState<TeamSummary[]>([]);
-  const [gameweeks, setGameweeks] = useState<GameweekSummary[]>([]);
-  const [fromGW, setFromGW] = useState<string>(searchParams.get("fromGW") ?? "");
-  const [toGW, setToGW] = useState<string>(searchParams.get("toGW") ?? "");
+  const [state, setState] = useState<AsyncState<PlayerCard[]>>(() => {
+    const cached = _playersDataCache.get(currentParamsKey);
+    return cached ? { status: "ready", data: cached } : { status: "loading" };
+  });
+  const [teams, setTeams] = useState<TeamSummary[]>(() => _teamsCache ?? []);
+  const [gameweeks, setGameweeks] = useState<GameweekSummary[]>(() => _gameweeksCache ?? []);
 
   const tableContainerRef = useRef<HTMLDivElement>(null);
   const [tableScrolled, setTableScrolled] = useState(false);
@@ -162,24 +182,41 @@ export function PlayersPage() {
   }, []);
 
   useEffect(() => {
-    getTeams().then(setTeams).catch(() => {});
-    getGameweeks()
-      .then((gws) => {
-        setGameweeks(gws);
-        // Default toGW to the current (or last finished) gameweek if not set
-        if (!searchParams.get("toGW")) {
-          const current = gws.find((g) => g.isCurrent) ?? gws.filter((g) => g.isFinished).at(-1);
-          if (current) setToGW(String(current.id));
-        }
-        if (!searchParams.get("fromGW") && gws.length > 0) {
-          setFromGW(String(gws[0].id));
-        }
-      })
-      .catch(() => {});
+    // Teams — skip if already cached
+    if (_teamsCache) {
+      setTeams(_teamsCache);
+    } else {
+      getTeams().then((t) => { _teamsCache = t; setTeams(t); }).catch(() => {});
+    }
+    // Gameweeks — skip if already cached; only default fromGW/toGW on first load
+    if (_gameweeksCache) {
+      setGameweeks(_gameweeksCache);
+    } else {
+      getGameweeks()
+        .then((gws) => {
+          _gameweeksCache = gws;
+          setGameweeks(gws);
+          // Use state vars (not URL params) — they're already populated from _savedParams on return visits
+          if (!fromGW && gws.length > 0) setFromGW(String(gws[0].id));
+          if (!toGW) {
+            const current = gws.find((g) => g.isCurrent) ?? gws.filter((g) => g.isFinished).at(-1);
+            if (current) setToGW(String(current.id));
+          }
+        })
+        .catch(() => {});
+    }
   }, []);  // eslint-disable-line react-hooks/exhaustive-deps
 
-  const fetchPlayers = useCallback((q: string, pos: string, tm: string, fgw: string, tgw: string) => {
+  const fetchPlayers = useCallback((q: string, pos: string, tm: string, fgw: string, tgw: string, skipCache = false) => {
+    const paramsKey = getPlayersParamsKey(q, pos, tm, fgw, tgw);
+    const cached = !skipCache ? _playersDataCache.get(paramsKey) : undefined;
+    if (cached) {
+      setState({ status: "ready", data: cached });
+      return;
+    }
+
     setState({ status: "loading" });
+    const fetchId = ++_latestFetchId; // claim "latest" — any older in-flight fetch will be discarded
     getPlayers({
       search: q || undefined,
       position: pos !== "all" ? pos : undefined,
@@ -187,13 +224,39 @@ export function PlayersPage() {
       fromGW: fgw ? Number(fgw) : undefined,
       toGW: tgw ? Number(tgw) : undefined,
     })
-      .then((data) => setState({ status: "ready", data }))
-      .catch((e) => setState({ status: "error", message: e.message }));
+      .then((data) => {
+        if (fetchId !== _latestFetchId) return; // stale — a newer fetch already won, discard
+        _playersDataCache.set(paramsKey, data);
+        setState({ status: "ready", data });
+      })
+      .catch((e) => {
+        if (fetchId !== _latestFetchId) return;
+        setState({ status: "error", message: e.message });
+      });
   }, []);
 
   useEffect(() => {
     fetchPlayers(search, position, team, fromGW, toGW);
   }, [search, position, team, fromGW, toGW, fetchPlayers]);
+
+  const handleRefresh = useCallback(() => {
+    fetchPlayers(search, position, team, fromGW, toGW, true);
+  }, [search, position, team, fromGW, toGW, fetchPlayers]);
+
+  const handleResetFilters = useCallback(() => {
+    setSearch("");
+    setPosition("all");
+    setTeam("all");
+    setStatusFilter("all");
+    setMinPrice("");
+    setMaxPrice("");
+    setMinMinutes("");
+    setSortCol("totalPoints");
+    setSortDir("desc");
+    const defaultTo = gameweeks.find((g) => g.isCurrent) ?? gameweeks.filter((g) => g.isFinished).at(-1);
+    if (defaultTo) setToGW(String(defaultTo.id));
+    if (gameweeks.length > 0) setFromGW(String(gameweeks[0].id));
+  }, [gameweeks]);
 
   useEffect(() => {
     const p = new URLSearchParams();
@@ -208,6 +271,7 @@ export function PlayersPage() {
     if (toGW) p.set("toGW", toGW);
     if (sortCol !== "totalPoints") p.set("col", sortCol);
     if (sortDir !== "desc") p.set("dir", sortDir);
+    _savedParams = p.toString(); // always up-to-date, even before first fetch resolves
     setSearchParams(p, { replace: true });
   }, [search, position, team, statusFilter, minPrice, maxPrice, minMinutes, fromGW, toGW, sortCol, sortDir, setSearchParams]);
 
@@ -326,12 +390,38 @@ export function PlayersPage() {
         )}
       </div>
 
-      {state.status === "ready" && (
-        <p className="text-xs text-muted-foreground -mt-1">
-          {players.length} player{players.length !== 1 ? "s" : ""}
-          {search && ` matching "${search}"`}
-        </p>
-      )}
+      <div className="flex items-center justify-between -mt-1">
+        {state.status === "ready" ? (
+          <p className="text-xs text-muted-foreground">
+            {players.length} player{players.length !== 1 ? "s" : ""}
+            {search && ` matching "${search}"`}
+          </p>
+        ) : (
+          <span />
+        )}
+        <div className="flex items-center gap-1">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleResetFilters}
+            disabled={state.status === "loading"}
+            className="h-7 gap-1.5 text-xs text-muted-foreground hover:text-foreground"
+          >
+            <RotateCcw className="h-3 w-3" />
+            Reset filters
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleRefresh}
+            disabled={state.status === "loading"}
+            className="h-7 gap-1.5 text-xs text-muted-foreground hover:text-foreground"
+          >
+            <RefreshCw className={cn("h-3 w-3", state.status === "loading" && "animate-spin")} />
+            Refresh
+          </Button>
+        </div>
+      </div>
 
       {state.status === "loading" && (
         <div className="flex justify-center py-16">

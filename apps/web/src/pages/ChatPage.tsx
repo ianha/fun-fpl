@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useLocation, useSearchParams } from "react-router-dom";
 import Markdown from "react-markdown";
 import type { Components } from "react-markdown";
 import { Send, MessageSquare, Bot, User, Loader2, LogIn } from "lucide-react";
@@ -205,6 +205,7 @@ function MessageBubble({ message }: { message: Message }) {
 // ── Main ChatPage ─────────────────────────────────────────────────────────────
 
 export function ChatPage() {
+  const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
   const [messages, setMessages] = useState<Message[]>(loadMessages);
   const [providers, setProviders] = useState<ProviderInfo[]>([]);
@@ -215,6 +216,8 @@ export function ChatPage() {
   const [streaming, setStreaming] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const providerInfo = providers.find((p) => p.id === selectedProvider);
+  const needsOAuth = providerInfo?.authType === "oauth" && !providerInfo.oauthConnected;
 
   // ── Fetch providers ─────────────────────────────────────────────────────────
   const fetchProviders = useCallback(async () => {
@@ -258,8 +261,13 @@ export function ChatPage() {
   }, [selectedProvider]);
 
   // ── Auto-scroll ──────────────────────────────────────────────────────────────
+  const isFirstScroll = useRef(true);
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    // On mount (first scroll): jump instantly so we start at the bottom, not the top.
+    // On subsequent message updates: smooth-scroll to reveal new content.
+    const behavior = isFirstScroll.current ? "instant" : "smooth";
+    isFirstScroll.current = false;
+    bottomRef.current?.scrollIntoView({ behavior: behavior as ScrollBehavior });
   }, [messages]);
 
   // ── Auto-resize textarea ─────────────────────────────────────────────────────
@@ -269,6 +277,14 @@ export function ChatPage() {
     el.style.height = "auto";
     el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
   }, [input]);
+
+  useEffect(() => {
+    if (needsOAuth || providers.length === 0 || streaming) return;
+    const frame = requestAnimationFrame(() => {
+      textareaRef.current?.focus();
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [location.key, needsOAuth, providers.length, streaming]);
 
   // ── Send message ─────────────────────────────────────────────────────────────
   const send = useCallback(async () => {
@@ -426,10 +442,6 @@ export function ChatPage() {
       send();
     }
   };
-
-  // ── Selected provider info ────────────────────────────────────────────────────
-  const providerInfo = providers.find((p) => p.id === selectedProvider);
-  const needsOAuth = providerInfo?.authType === "oauth" && !providerInfo.oauthConnected;
 
   // ── Google Sign-in ────────────────────────────────────────────────────────────
   const handleGoogleSignIn = async () => {
