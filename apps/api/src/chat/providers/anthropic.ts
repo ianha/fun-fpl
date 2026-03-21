@@ -31,7 +31,7 @@ export async function streamAnthropic(
     const stream = await client.messages.stream({
       model: config.model,
       max_tokens: 4096,
-      system: SYSTEM_PROMPT,
+      system: [{ type: "text", text: SYSTEM_PROMPT, cache_control: { type: "ephemeral" } }],
       tools: ANTHROPIC_TOOLS,
       messages: anthropicMessages,
     });
