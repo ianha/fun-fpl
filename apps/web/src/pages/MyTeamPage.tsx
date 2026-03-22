@@ -115,9 +115,12 @@ function getHistoricalCacheKey(accountId: number, gameweek: number): string {
   return `${accountId}|${gameweek}`;
 }
 
-function PitchPlayerCard({ entry, gwPoints, onClick }: { entry: SquadEntry; gwPoints?: number; onClick?: () => void }) {
+function PitchPlayerCard({ entry, gwPoints, multiplier, onClick }: { entry: SquadEntry; gwPoints?: number; multiplier?: number; onClick?: () => void }) {
   const image = resolveAssetUrl(entry.player.imagePath);
   const interactive = !!onClick;
+  // Use isCaptain flag; also treat multiplier ≥ 2 as captain (reliable for historical picks)
+  const isCaptain = entry.isCaptain || (multiplier !== undefined && multiplier >= 2);
+  const isVice = !isCaptain && entry.isViceCaptain;
 
   return (
     <div
@@ -127,60 +130,50 @@ function PitchPlayerCard({ entry, gwPoints, onClick }: { entry: SquadEntry; gwPo
       onClick={onClick}
       onKeyDown={interactive ? (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onClick?.(); } } : undefined}
       className={cn(
-        "group flex w-full flex-col items-center rounded-2xl border p-3 text-center transition-all duration-200",
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-        interactive
-          ? "cursor-pointer border-white/10 bg-[rgba(17,6,39,0.7)] hover:border-white/20 hover:bg-[rgba(17,6,39,0.85)]"
-          : "cursor-default border-white/10 bg-[rgba(17,6,39,0.7)]",
+        "group flex w-full flex-col items-center text-center transition-all duration-200",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:rounded-lg",
+        interactive ? "cursor-pointer" : "cursor-default",
       )}
     >
-      <div className="relative mb-2">
+      {/* Kit image with C/V badge pinned to top-left corner */}
+      <div className="relative mb-1">
+        {(isCaptain || isVice) && (
+          <span className="absolute left-0 top-0 z-10 flex h-6 w-6 items-center justify-center rounded-full bg-white/80 text-[11px] font-extrabold text-black shadow-lg">
+            {isCaptain ? "C" : "V"}
+          </span>
+        )}
         {image ? (
           <img
             src={image}
             alt={entry.player.webName}
-            className="h-16 w-16 rounded-2xl object-cover ring-1 ring-white/15"
+            className={cn(
+              "h-16 w-16 object-contain drop-shadow-[0_4px_12px_rgba(0,0,0,0.55)] sm:h-20 sm:w-20",
+              interactive && "transition-transform duration-200 group-hover:scale-105",
+            )}
           />
         ) : (
-          <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-white/10 ring-1 ring-white/15">
-            <ShieldAlert className="h-5 w-5 text-white/40" />
+          <div className="flex h-16 w-16 items-center justify-center sm:h-20 sm:w-20">
+            <ShieldAlert className="h-7 w-7 text-white/50 drop-shadow" />
           </div>
         )}
-        {entry.isCaptain && (
-          <span className="absolute -right-1 -top-1 flex h-6 w-6 items-center justify-center rounded-full bg-accent text-[11px] font-bold text-accent-foreground">
-            C
-          </span>
-        )}
-        {!entry.isCaptain && entry.isViceCaptain && (
-          <span className="absolute -right-1 -top-1 flex h-6 w-6 items-center justify-center rounded-full bg-white/15 text-[11px] font-bold text-white">
-            V
-          </span>
-        )}
       </div>
 
-      <div className="font-display text-xs font-semibold text-white">{entry.player.webName}</div>
-      <div className="mt-1 flex items-center justify-center gap-1.5">
-        <span className={cn("rounded px-1.5 py-0.5 text-[9px] font-bold", POSITION_CONFIG[entry.player.positionId]?.color)}>
-          {POSITION_CONFIG[entry.player.positionId]?.label}
-        </span>
-        <span className="text-[10px] text-white/45">{entry.player.teamShortName}</span>
+      {/* Name + points pill */}
+      <div className="w-full max-w-[86px] rounded-md bg-[rgba(5,1,15,0.82)] px-1.5 py-1 backdrop-blur-sm">
+        <div className="truncate font-display text-[11px] font-bold leading-tight text-white">
+          {entry.player.webName}
+        </div>
+        {gwPoints !== undefined ? (
+          <div className={cn(
+            "font-display text-[13px] font-bold tabular-nums leading-tight",
+            gwPoints > 0 ? "text-accent" : gwPoints < 0 ? "text-red-400" : "text-white/35",
+          )}>
+            {gwPoints}
+          </div>
+        ) : (
+          <div className="text-[10px] text-white/55">{formatCost(entry.player.nowCost)}</div>
+        )}
       </div>
-
-      {gwPoints !== undefined ? (
-        <div className={cn(
-          "mt-1.5 font-display text-lg font-bold tabular-nums leading-none",
-          gwPoints > 0 ? "text-white" : gwPoints < 0 ? "text-red-400" : "text-white/25",
-        )}>
-          {gwPoints}
-          <span className="ml-0.5 text-[9px] font-normal text-white/40">pts</span>
-        </div>
-      ) : (
-        <div className="mt-1.5 flex items-center gap-2 text-[11px] text-white/60">
-          <span>{formatCost(entry.player.nowCost)}</span>
-          <span className="text-accent">{entry.player.form.toFixed(1)}</span>
-        </div>
-      )}
-
     </div>
   );
 }
@@ -737,22 +730,51 @@ export function MyTeamPage() {
                   displayStarters.filter((e) => e.player.positionId === posId),
                 );
 
+                const getBenchLabel = (entry: SquadEntry, benchIdx: number): string => {
+                  if (entry.player.positionId === 1) return "GKP";
+                  const outfieldRank = displayBench
+                    .slice(0, benchIdx)
+                    .filter((e) => e.player.positionId !== 1).length + 1;
+                  return `${outfieldRank}. ${POSITION_CONFIG[entry.player.positionId]?.label ?? ""}`;
+                };
+
                 return (
-                  <div className="rounded-2xl border border-white/8 bg-[linear-gradient(180deg,rgba(0,70,35,0.45)_0%,rgba(3,18,10,0.97)_100%)] p-4 sm:p-5">
-                    {historicalLoading ? (
-                      <div className="flex items-center justify-center py-16">
-                        <div className="h-6 w-6 animate-spin rounded-full border-2 border-accent border-t-transparent" />
-                      </div>
-                    ) : (
-                      <>
-                        <div className="space-y-3">
+                  <div className="overflow-hidden rounded-2xl border border-white/8">
+
+                    {/* ── PITCH AREA ─────────────────────────────────── */}
+                    <div className="relative bg-[linear-gradient(180deg,#2d8a4e_0%,#1f6335_55%,#174d28_100%)] px-4 pb-8 pt-5">
+
+                      {/* SVG field markings */}
+                      <svg
+                        className="pointer-events-none absolute inset-0 h-full w-full"
+                        viewBox="0 0 100 100"
+                        preserveAspectRatio="none"
+                        aria-hidden="true"
+                      >
+                        {/* Penalty area */}
+                        <rect x="18" y="0" width="64" height="18" rx="0.3" fill="none" stroke="white" strokeOpacity="0.1" strokeWidth="0.6" />
+                        {/* Goal area */}
+                        <rect x="34" y="0" width="32" height="8" rx="0.3" fill="none" stroke="white" strokeOpacity="0.1" strokeWidth="0.6" />
+                        {/* Penalty spot */}
+                        <circle cx="50" cy="13" r="0.8" fill="white" fillOpacity="0.12" />
+                        {/* Halfway line */}
+                        <line x1="0" y1="84" x2="100" y2="84" stroke="white" strokeOpacity="0.09" strokeWidth="0.6" />
+                        {/* Center circle */}
+                        <circle cx="50" cy="84" r="10" fill="none" stroke="white" strokeOpacity="0.09" strokeWidth="0.6" />
+                        {/* Center spot */}
+                        <circle cx="50" cy="84" r="0.8" fill="white" fillOpacity="0.12" />
+                      </svg>
+
+                      {historicalLoading ? (
+                        <div className="flex items-center justify-center py-16">
+                          <div className="h-6 w-6 animate-spin rounded-full border-2 border-accent border-t-transparent" />
+                        </div>
+                      ) : (
+                        <div className="relative z-10 space-y-5">
                           {displayGrouped.map((row, index) => (
                             <div
                               key={`row-${index}`}
-                              className={cn(
-                                "grid gap-3",
-                                index > 0 && "border-t border-white/5 pt-3",
-                              )}
+                              className="grid gap-2"
                               style={{ gridTemplateColumns: `repeat(${Math.max(row.length, 1)}, minmax(0, 1fr))` }}
                             >
                               {row.map((entry) => (
@@ -760,28 +782,37 @@ export function MyTeamPage() {
                                   key={entry.slotId}
                                   entry={entry}
                                   gwPoints={gwPointsMap[entry.slotId] !== undefined ? gwPointsMap[entry.slotId] * Math.max(pickBySlotId[entry.slotId]?.multiplier ?? 1, 1) : undefined}
+                                  multiplier={pickBySlotId[entry.slotId]?.multiplier}
                                   onClick={gwPointsMap[entry.slotId] !== undefined ? () => handleCardClick(entry.slotId) : undefined}
                                 />
                               ))}
                             </div>
                           ))}
                         </div>
+                      )}
+                    </div>
 
-                        <div className="mt-5 border-t border-white/10 pt-4">
-                          <p className="mb-3 text-[10px] font-semibold uppercase tracking-[0.25em] text-white/35">Bench</p>
-                          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                            {displayBench.map((entry) => (
-                              <PitchPlayerCard
-                                key={entry.slotId}
-                                entry={entry}
-                                gwPoints={isHistorical && gwPointsMap[entry.slotId] !== undefined ? gwPointsMap[entry.slotId] : undefined}
-                                onClick={isHistorical && gwPointsMap[entry.slotId] !== undefined ? () => handleCardClick(entry.slotId) : undefined}
-                              />
-                            ))}
+                    {/* ── BENCH AREA ─────────────────────────────────── */}
+                    <div className="bg-[rgba(8,3,22,0.98)] px-4 py-3">
+                      <p className="mb-2.5 text-[9px] font-semibold uppercase tracking-[0.25em] text-white/30">
+                        Substitutes
+                      </p>
+                      <div className="grid grid-cols-4 gap-2">
+                        {displayBench.map((entry, idx) => (
+                          <div key={entry.slotId} className="flex flex-col items-center gap-1">
+                            <span className="text-[9px] font-medium uppercase tracking-wider text-white/40">
+                              {getBenchLabel(entry, idx)}
+                            </span>
+                            <PitchPlayerCard
+                              entry={entry}
+                              gwPoints={isHistorical && gwPointsMap[entry.slotId] !== undefined ? gwPointsMap[entry.slotId] : undefined}
+                              onClick={isHistorical && gwPointsMap[entry.slotId] !== undefined ? () => handleCardClick(entry.slotId) : undefined}
+                            />
                           </div>
-                        </div>
-                      </>
-                    )}
+                        ))}
+                      </div>
+                    </div>
+
                   </div>
                 );
               })()}
