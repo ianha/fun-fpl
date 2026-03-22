@@ -2,10 +2,48 @@ import { Router, type Request, type Response } from "express";
 import type { AppDatabase } from "../db/database.js";
 import type { ChatRequest } from "./chatTypes.js";
 import { listProviderInfos, getProviderById } from "./providerConfig.js";
+import type { ApiKeyProviderConfig, OAuthProviderConfig, ProviderConfig } from "./providerConfig.js";
 import * as oauthManager from "./oauthManager.js";
 import { streamAnthropic } from "./providers/anthropic.js";
 import { streamOpenAI } from "./providers/openai.js";
 import { streamGemini } from "./providers/gemini.js";
+
+function isApiKeyProvider(config: ProviderConfig): config is ApiKeyProviderConfig {
+  return !("auth" in config);
+}
+
+function isOauthProvider(config: ProviderConfig): config is OAuthProviderConfig {
+  return "auth" in config && config.auth === "oauth";
+}
+
+async function streamWithProvider(
+  db: AppDatabase,
+  config: ProviderConfig,
+  messages: ChatRequest["messages"],
+  emit: (event: object) => void,
+): Promise<void> {
+  switch (config.provider) {
+    case "anthropic":
+      if (!isApiKeyProvider(config)) {
+        emit({ type: "error", message: "Unsupported provider config for anthropic" });
+        return;
+      }
+      await streamAnthropic(db, config, messages, emit);
+      return;
+    case "openai":
+      if (!isApiKeyProvider(config)) {
+        emit({ type: "error", message: "Unsupported provider config for openai" });
+        return;
+      }
+      await streamOpenAI(db, config, messages, emit);
+      return;
+    case "google":
+      await streamGemini(db, config, messages, emit);
+      return;
+    default:
+      return;
+  }
+}
 
 export function createChatRouter(db: AppDatabase): Router {
   const router = Router();
@@ -33,7 +71,7 @@ export function createChatRouter(db: AppDatabase): Router {
     }
 
     // Check OAuth providers are connected
-    if ("auth" in config && config.auth === "oauth" && !oauthManager.hasTokens(config.id)) {
+    if (isOauthProvider(config) && !oauthManager.hasTokens(config.id)) {
       res.status(401).json({ error: `Provider "${providerId}" requires OAuth sign-in first` });
       return;
     }
@@ -47,15 +85,7 @@ export function createChatRouter(db: AppDatabase): Router {
     const emit = (event: object) => res.write(`data: ${JSON.stringify(event)}\n\n`);
 
     try {
-      if (config.provider === "anthropic") {
-        await streamAnthropic(db, config as any, messages, emit);
-      } else if (config.provider === "openai") {
-        await streamOpenAI(db, config as any, messages, emit);
-      } else if (config.provider === "google") {
-        await streamGemini(db, config, messages, emit);
-      } else {
-        emit({ type: "error", message: `Unsupported provider: ${(config as any).provider}` });
-      }
+      await streamWithProvider(db, config, messages, emit);
     } catch (err) {
       emit({
         type: "error",
@@ -76,7 +106,7 @@ export function createChatRouter(db: AppDatabase): Router {
     }
 
     const config = getProviderById(providerId);
-    if (!config || !("auth" in config) || config.auth !== "oauth") {
+    if (!config || !isOauthProvider(config)) {
       res.status(400).json({ error: `Provider "${providerId}" is not an OAuth provider` });
       return;
     }
@@ -102,7 +132,7 @@ export function createChatRouter(db: AppDatabase): Router {
     }
 
     const config = getProviderById(providerId);
-    if (!config || !("auth" in config) || config.auth !== "oauth") {
+    if (!config || !isOauthProvider(config)) {
       res.status(400).send(`Provider "${providerId}" is not an OAuth provider`);
       return;
     }

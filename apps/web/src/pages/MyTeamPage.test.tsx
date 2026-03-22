@@ -2,55 +2,21 @@ import { render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { MyTeamPage, resetMyTeamPageCacheForTests } from "./MyTeamPage";
-
-function makePlayer(id: number, positionId: number, teamId: number, totalPoints: number) {
-  return {
-    id,
-    webName: `Player ${id}`,
-    firstName: "Player",
-    secondName: String(id),
-    teamId,
-    teamName: `Team ${teamId}`,
-    teamShortName: `T${teamId}`,
-    imagePath: null,
-    positionId,
-    positionName: ["", "Goalkeeper", "Defender", "Midfielder", "Forward"][positionId],
-    nowCost: 45 + id,
-    totalPoints,
-    form: 5 + (id % 4),
-    selectedByPercent: 10 + id,
-    pointsPerGame: 4.5,
-    goalsScored: positionId === 4 ? 10 : 3,
-    assists: positionId === 3 ? 8 : 2,
-    cleanSheets: positionId < 3 ? 8 : 3,
-    minutes: 900 + id,
-    bonus: 10,
-    bps: 100,
-    creativity: 30,
-    influence: 30,
-    threat: 30,
-    ictIndex: 30,
-    expectedGoals: 5,
-    expectedAssists: 4,
-    expectedGoalInvolvements: 9,
-    expectedGoalPerformance: 1,
-    expectedAssistPerformance: 1,
-    expectedGoalInvolvementPerformance: 2,
-    expectedGoalsConceded: 8,
-    cleanSheetsPer90: 0.2,
-    starts: 10,
-    tackles: 8,
-    recoveries: 12,
-    defensiveContribution: 9,
-    status: "a",
-  };
-}
+import { makePlayer } from "../test/factories";
 
 const mockPlayers = [
-  ...Array.from({ length: 4 }, (_, index) => makePlayer(index + 1, 1, index + 1, 100 - index)),
-  ...Array.from({ length: 9 }, (_, index) => makePlayer(index + 10, 2, (index % 6) + 1, 120 - index)),
-  ...Array.from({ length: 9 }, (_, index) => makePlayer(index + 30, 3, (index % 6) + 1, 140 - index)),
-  ...Array.from({ length: 6 }, (_, index) => makePlayer(index + 50, 4, (index % 6) + 1, 160 - index)),
+  ...Array.from({ length: 4 }, (_, index) =>
+    makePlayer(index + 1, 1, index + 1, 100 - index, { imagePath: null }),
+  ),
+  ...Array.from({ length: 9 }, (_, index) =>
+    makePlayer(index + 10, 2, (index % 6) + 1, 120 - index, { imagePath: null }),
+  ),
+  ...Array.from({ length: 9 }, (_, index) =>
+    makePlayer(index + 30, 3, (index % 6) + 1, 140 - index, { imagePath: null }),
+  ),
+  ...Array.from({ length: 6 }, (_, index) =>
+    makePlayer(index + 50, 4, (index % 6) + 1, 160 - index, { imagePath: null }),
+  ),
 ];
 
 function buildPayload() {
@@ -231,6 +197,51 @@ describe("MyTeamPage", () => {
       expect(getMyTeamGameweekPicksMock).toHaveBeenCalledWith(1, 6);
     });
     expect(await screen.findByText(/48 pts · 3 on bench/i, { selector: "p" })).toBeInTheDocument();
+  });
+
+  it("deduplicates repeated historical players in the pitch view", async () => {
+    const duplicatedPlayer = mockPlayers[0];
+    getMyTeamGameweekPicksMock.mockResolvedValueOnce({
+      gameweek: 6,
+      totalPoints: 48,
+      pointsOnBench: 3,
+      picks: [
+        {
+          slotId: "pick-1",
+          position: 1,
+          multiplier: 1,
+          isCaptain: false,
+          isViceCaptain: false,
+          sellingPrice: duplicatedPlayer.nowCost,
+          purchasePrice: duplicatedPlayer.nowCost - 1,
+          role: "starter",
+          benchOrder: null,
+          gwPoints: 6,
+          player: duplicatedPlayer,
+        },
+        {
+          slotId: "pick-2",
+          position: 2,
+          multiplier: 1,
+          isCaptain: false,
+          isViceCaptain: false,
+          sellingPrice: duplicatedPlayer.nowCost,
+          purchasePrice: duplicatedPlayer.nowCost - 1,
+          role: "starter",
+          benchOrder: null,
+          gwPoints: 6,
+          player: duplicatedPlayer,
+        },
+      ],
+    });
+
+    render(
+      <MemoryRouter initialEntries={["/my-team?accountId=1&viewGW=6"]}>
+        <MyTeamPage />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findAllByLabelText(duplicatedPlayer.webName)).toHaveLength(1);
   });
 
   it("shows a relink banner and disables sync when the account needs re-authentication", async () => {

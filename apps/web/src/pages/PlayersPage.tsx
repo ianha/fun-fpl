@@ -15,13 +15,23 @@ import {
 import { cn } from "@/lib/utils";
 import { Search, Users, ChevronUp, ChevronDown, ChevronsUpDown, RefreshCw, RotateCcw, SlidersHorizontal, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  buildPlayersSearchParams,
+  countActiveAdvancedFilters,
+  filterAndSortPlayers,
+  getDefaultGameweekRange,
+  getPlayerColumnValue,
+  getPlayersParamsKey,
+  hasActiveAdvancedFilters,
+  type PlayerColumnKey,
+  type SortDir,
+} from "./playersPageUtils";
 
 type AsyncState<T> =
   | { status: "loading" }
   | { status: "error"; message: string }
   | { status: "ready"; data: T };
 
-type SortDir = "asc" | "desc";
 const PLAYERS_PAGE_SIZE = 35;
 
 const _playersDataCache = new Map<string, PlayerCard[]>();
@@ -52,12 +62,12 @@ const STATUS_CONFIG: Record<string, { label: string; dot: string }> = {
 };
 
 type ColDef = {
-  key: string;
+  key: PlayerColumnKey;
   label: string;
   title?: string;
   align?: "right" | "left";
   sortable?: boolean;
-  format?: (v: any, player: PlayerCard) => React.ReactNode;
+  format?: (value: number | string, player: PlayerCard) => React.ReactNode;
   group?: string;
   compute?: (player: PlayerCard) => number;
   /** Values can be negative; format renders green (≥0) or red (<0) */
@@ -65,12 +75,12 @@ type ColDef = {
 };
 
 const COLUMNS: ColDef[] = [
-  { key: "nowCost",           label: "Price",  align: "right", sortable: true, format: (v) => formatCost(v) },
+  { key: "nowCost",           label: "Price",  align: "right", sortable: true, format: (v) => formatCost(Number(v)) },
   { key: "totalPoints",       label: "Pts",    title: "Total Points",   align: "right", sortable: true, format: (v) => <span className="font-bold">{v}</span> },
   { key: "pointsPerGame",     label: "PPG",    title: "Points Per Game", align: "right", sortable: true, format: (v) => Number(v).toFixed(1) },
   { key: "form",              label: "Form",   align: "right", sortable: true, format: (v) => Number(v).toFixed(1) },
   { key: "selectedByPercent", label: "Sel%",   title: "Selected By %",  align: "right", sortable: true, format: (v) => formatPercent(Number(v)) },
-  { key: "minutes",           label: "Min",    title: "Minutes Played", align: "right", sortable: true, format: (v) => v.toLocaleString() },
+  { key: "minutes",           label: "Min",    title: "Minutes Played", align: "right", sortable: true, format: (v) => Number(v).toLocaleString() },
   { key: "starts",            label: "Starts", align: "right", sortable: true },
   { key: "cleanSheets",       label: "CS",     title: "Clean Sheets",   align: "right", sortable: true },
   { key: "bonus",             label: "Bonus",  align: "right", sortable: true },
@@ -105,11 +115,6 @@ const POSITION_CHIPS: { value: string; label: string }[] = [
   { value: "4",   label: "FWD" },
 ];
 
-function getColValue(player: PlayerCard, col: ColDef): number | string {
-  if (col.compute) return col.compute(player);
-  return (player as any)[col.key] ?? 0;
-}
-
 function SortIcon({ colKey, sortCol, sortDir }: { colKey: string; sortCol: string; sortDir: SortDir }) {
   if (colKey !== sortCol) return <ChevronsUpDown className="h-3 w-3 opacity-30" />;
   return sortDir === "desc"
@@ -122,10 +127,6 @@ function StatusDot({ status }: { status: string }) {
   return (
     <span title={cfg.label} className={cn("inline-block h-2 w-2 rounded-full shrink-0", cfg.dot)} />
   );
-}
-
-function getPlayersParamsKey(q: string, pos: string, tm: string, fgw: string, tgw: string): string {
-  return [q || "", pos, tm, fgw, tgw].join("|");
 }
 
 function shouldAutofocusInput(): boolean {
@@ -183,12 +184,13 @@ export function PlayersPage() {
 
   // Auto-expand on return if any advanced filter was previously active
   const [showAdvancedFilters, setShowAdvancedFilters] = useState<boolean>(() => {
-    const savedTeam    = getSavedParam("team", "all");
-    const savedStatus  = getSavedParam("status", "all");
-    const savedMinP    = getSavedParam("minPrice");
-    const savedMaxP    = getSavedParam("maxPrice");
-    const savedMinMins = getSavedParam("minMin");
-    return [savedTeam !== "all", savedStatus !== "all", !!savedMinP, !!savedMaxP, !!savedMinMins].some(Boolean);
+    return hasActiveAdvancedFilters({
+      team: getSavedParam("team", "all"),
+      statusFilter: getSavedParam("status", "all"),
+      minPrice: getSavedParam("minPrice"),
+      maxPrice: getSavedParam("maxPrice"),
+      minMinutes: getSavedParam("minMin"),
+    });
   });
 
   const currentParamsKey = getPlayersParamsKey(search, position, team, fromGW, toGW);
@@ -224,12 +226,9 @@ export function PlayersPage() {
         .then((gws) => {
           _gameweeksCache = gws;
           setGameweeks(gws);
-          // Use state vars (not URL params) — they're already populated from _savedParams on return visits
-          if (!fromGW && gws.length > 0) setFromGW(String(gws[0].id));
-          if (!toGW) {
-            const current = gws.find((g) => g.isCurrent) ?? gws.filter((g) => g.isFinished).at(-1);
-            if (current) setToGW(String(current.id));
-          }
+          const defaults = getDefaultGameweekRange(gws);
+          if (!fromGW && defaults.fromGW) setFromGW(defaults.fromGW);
+          if (!toGW && defaults.toGW) setToGW(defaults.toGW);
         })
         .catch(() => {});
     }
@@ -278,38 +277,44 @@ export function PlayersPage() {
     setStatusFilter("all");
     setMinPrice("");
     setMaxPrice("");
-    setMinMinutes("");
-    setSortCol("totalPoints");
-    setSortDir("desc");
-    const defaultTo = gameweeks.find((g) => g.isCurrent) ?? gameweeks.filter((g) => g.isFinished).at(-1);
-    if (defaultTo) setToGW(String(defaultTo.id));
-    if (gameweeks.length > 0) setFromGW(String(gameweeks[0].id));
+      setMinMinutes("");
+      setSortCol("totalPoints");
+      setSortDir("desc");
+    const defaults = getDefaultGameweekRange(gameweeks);
+    setToGW(defaults.toGW);
+    setFromGW(defaults.fromGW);
     setShowAdvancedFilters(false);
   }, [gameweeks]);
 
   // Count of active advanced filters (shown as badge on mobile toggle button)
   const activeFilterCount = useMemo(
     () =>
-      [team !== "all", statusFilter !== "all", !!minPrice, !!maxPrice, !!minMinutes]
-        .filter(Boolean).length,
+      countActiveAdvancedFilters({
+        team,
+        statusFilter,
+        minPrice,
+        maxPrice,
+        minMinutes,
+      }),
     [team, statusFilter, minPrice, maxPrice, minMinutes],
   );
 
   useEffect(() => {
-    const p = new URLSearchParams();
-    if (search) p.set("q", search);
-    if (position !== "all") p.set("position", position);
-    if (team !== "all") p.set("team", team);
-    if (statusFilter !== "all") p.set("status", statusFilter);
-    if (minPrice) p.set("minPrice", minPrice);
-    if (maxPrice) p.set("maxPrice", maxPrice);
-    if (minMinutes) p.set("minMin", minMinutes);
-    if (fromGW) p.set("fromGW", fromGW);
-    if (toGW) p.set("toGW", toGW);
-    if (sortCol !== "totalPoints") p.set("col", sortCol);
-    if (sortDir !== "desc") p.set("dir", sortDir);
-    _savedParams = p.toString(); // always up-to-date, even before first fetch resolves
-    setSearchParams(p, { replace: true });
+    const params = buildPlayersSearchParams({
+      search,
+      position,
+      team,
+      statusFilter,
+      minPrice,
+      maxPrice,
+      minMinutes,
+      fromGW,
+      toGW,
+      sortCol,
+      sortDir,
+    });
+    _savedParams = params.toString();
+    setSearchParams(params, { replace: true });
   }, [search, position, team, statusFilter, minPrice, maxPrice, minMinutes, fromGW, toGW, sortCol, sortDir, setSearchParams]);
 
   function handleSort(col: string) {
@@ -323,26 +328,11 @@ export function PlayersPage() {
 
   const players = useMemo(() => {
     if (state.status !== "ready") return [];
-    let list = state.data;
-
-    if (statusFilter !== "all") list = list.filter((p) => p.status === statusFilter);
-    if (minPrice) { const min = parseFloat(minPrice) * 10; list = list.filter((p) => p.nowCost >= min); }
-    if (maxPrice) { const max = parseFloat(maxPrice) * 10; list = list.filter((p) => p.nowCost <= max); }
-    if (minMinutes) { const min = parseInt(minMinutes, 10); list = list.filter((p) => p.minutes >= min); }
-
-    const colDef = COLUMNS.find((c) => c.key === sortCol);
-    list = [...list].sort((a, b) => {
-      const aVal = colDef ? getColValue(a, colDef) : (a as any)[sortCol] ?? 0;
-      const bVal = colDef ? getColValue(b, colDef) : (b as any)[sortCol] ?? 0;
-      const aNum = Number(aVal);
-      const bNum = Number(bVal);
-      const diff = isNaN(aNum) || isNaN(bNum)
-        ? String(aVal).localeCompare(String(bVal))
-        : aNum - bNum;
-      return sortDir === "desc" ? -diff : diff;
-    });
-
-    return list;
+    return filterAndSortPlayers(
+      state.data,
+      { statusFilter, minPrice, maxPrice, minMinutes },
+      { key: sortCol, dir: sortDir },
+    );
   }, [state, statusFilter, minPrice, maxPrice, minMinutes, sortCol, sortDir]);
 
   const teamImageMap = useMemo(
@@ -703,7 +693,7 @@ export function PlayersPage() {
                       </td>
 
                       {COLUMNS.map((col) => {
-                        const raw = col.compute ? col.compute(player) : (player as any)[col.key];
+                        const raw = getPlayerColumnValue(player, col.key);
                         const content = col.format ? col.format(raw, player) : String(raw ?? "—");
                         return (
                           <td

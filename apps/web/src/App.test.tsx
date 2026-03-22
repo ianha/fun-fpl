@@ -2,49 +2,7 @@ import { render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
-
-function makePlayer(id: number, positionId: number, teamId: number, totalPoints: number) {
-  return {
-    id,
-    webName: `Player ${id}`,
-    firstName: "Player",
-    secondName: String(id),
-    teamId,
-    teamName: `Team ${teamId}`,
-    teamShortName: `T${teamId}`,
-    imagePath: `/assets/players/${id}.jpg`,
-    positionId,
-    positionName: ["", "Goalkeeper", "Defender", "Midfielder", "Forward"][positionId],
-    nowCost: 45 + id,
-    totalPoints,
-    form: 5 + (id % 4),
-    selectedByPercent: 10 + id,
-    pointsPerGame: 4.5,
-    goalsScored: positionId === 4 ? 10 : 3,
-    assists: positionId === 3 ? 8 : 2,
-    cleanSheets: positionId < 3 ? 8 : 3,
-    minutes: 900 + id,
-    bonus: 10,
-    bps: 100,
-    creativity: 30,
-    influence: 30,
-    threat: 30,
-    ictIndex: 30,
-    expectedGoals: 5,
-    expectedAssists: 4,
-    expectedGoalInvolvements: 9,
-    expectedGoalPerformance: 1,
-    expectedAssistPerformance: 1,
-    expectedGoalInvolvementPerformance: 2,
-    expectedGoalsConceded: 8,
-    cleanSheetsPer90: 0.2,
-    starts: 10,
-    tackles: 8,
-    recoveries: 12,
-    defensiveContribution: 9,
-    status: "a",
-  };
-}
+import { makePlayer } from "./test/factories";
 
 const mockPlayers = [
   makePlayer(10, 3, 1, 215),

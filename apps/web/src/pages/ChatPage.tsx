@@ -4,63 +4,20 @@ import Markdown from "react-markdown";
 import type { Components } from "react-markdown";
 import { Send, MessageSquare, Bot, User, Loader2, LogIn } from "lucide-react";
 import { cn } from "@/lib/utils";
-
-// ── Types ─────────────────────────────────────────────────────────────────────
-
-function resolveApiBaseUrl() {
-  if (import.meta.env.VITE_API_BASE_URL) {
-    return import.meta.env.VITE_API_BASE_URL;
-  }
-
-  if (typeof window !== "undefined") {
-    return `${window.location.origin}/api`;
-  }
-
-  return "http://localhost:4000/api";
-}
-
-const API_BASE_URL = resolveApiBaseUrl();
-
-type ProviderInfo = {
-  id: string;
-  name: string;
-  provider: "anthropic" | "openai" | "google";
-  model: string;
-  authType: "apiKey" | "oauth";
-  oauthConnected: boolean;
-};
-
-type ToolCall = {
-  id: string;
-  name: string;
-  input: Record<string, unknown>;
-  result?: string;
-};
-
-type Message = {
-  id: string;
-  role: "user" | "assistant";
-  content: string;
-  toolCalls?: ToolCall[];
-  streaming?: boolean;
-};
-
-type ChatEvent =
-  | { type: "text_delta"; content: string }
-  | { type: "tool_start"; id: string; name: string; input: Record<string, unknown> }
-  | { type: "tool_result"; id: string; content: string }
-  | { type: "error"; message: string }
-  | { type: "done" };
+import { getChatGoogleAuthUrl, getChatProviders, streamChat } from "@/api/client";
+import {
+  applyChatEvent,
+  parseSseChunk,
+  shouldAutofocusChatInput,
+  toChatHistory,
+  type Message,
+  type ProviderInfo,
+} from "./chatPageUtils";
 
 // ── Storage helpers ───────────────────────────────────────────────────────────
 
 const MESSAGES_KEY = "fpl-chat-messages";
 const PROVIDER_KEY = "fpl-chat-provider";
-
-function shouldAutofocusInput(): boolean {
-  if (typeof window === "undefined") return false;
-  return !window.matchMedia("(max-width: 767px), (pointer: coarse)").matches;
-}
 
 function loadMessages(): Message[] {
   try {
@@ -227,9 +184,7 @@ export function ChatPage() {
   // ── Fetch providers ─────────────────────────────────────────────────────────
   const fetchProviders = useCallback(async () => {
     try {
-      const res = await fetch(`${API_BASE_URL}/chat/providers`);
-      if (!res.ok) return;
-      const data = (await res.json()) as ProviderInfo[];
+      const data = await getChatProviders();
       setProviders(data);
       // Auto-select first available provider
       setSelectedProvider((prev) => {
@@ -284,7 +239,7 @@ export function ChatPage() {
   }, [input]);
 
   useEffect(() => {
-    if (!shouldAutofocusInput()) return;
+    if (!shouldAutofocusChatInput()) return;
     if (needsOAuth || providers.length === 0 || streaming) return;
     const frame = requestAnimationFrame(() => {
       textareaRef.current?.focus();
@@ -317,32 +272,10 @@ export function ChatPage() {
     setStreaming(true);
 
     // Build the history to send (all non-streaming messages + new user msg)
-    const history = [...messages, userMsg].map((m) => ({
-      role: m.role,
-      content: m.content,
-    }));
+    const history = toChatHistory(messages, userMsg);
 
     try {
-      const res = await fetch(`${API_BASE_URL}/chat/stream`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: history, providerId: selectedProvider }),
-      });
-
-      if (!res.ok || !res.body) {
-        const errText = await res.text().catch(() => "Unknown error");
-        setMessages((prev) =>
-          prev.map((m) =>
-            m.id === assistantMsgId
-              ? { ...m, content: `Error: ${errText}`, streaming: false }
-              : m,
-          ),
-        );
-        setStreaming(false);
-        return;
-      }
-
-      const reader = res.body.getReader();
+      const reader = await streamChat(selectedProvider, history);
       const decoder = new TextDecoder();
       let buffer = "";
 
@@ -350,81 +283,15 @@ export function ChatPage() {
         const { done, value } = await reader.read();
         if (done) break;
 
-        buffer += decoder.decode(value, { stream: true });
+        const parsed = parseSseChunk(buffer, decoder.decode(value, { stream: true }));
+        buffer = parsed.buffer;
 
-        // Process complete SSE events (separated by \n\n)
-        const parts = buffer.split("\n\n");
-        buffer = parts.pop() ?? "";
-
-        for (const part of parts) {
-          for (const line of part.split("\n")) {
-            if (!line.startsWith("data: ")) continue;
-            let event: ChatEvent;
-            try {
-              event = JSON.parse(line.slice(6)) as ChatEvent;
-            } catch {
-              continue;
-            }
-
-            if (event.type === "text_delta") {
-              setMessages((prev) =>
-                prev.map((m) =>
-                  m.id === assistantMsgId ? { ...m, content: m.content + event.content } : m,
-                ),
-              );
-            } else if (event.type === "tool_start") {
-              setMessages((prev) =>
-                prev.map((m) =>
-                  m.id === assistantMsgId
-                    ? {
-                      ...m,
-                      toolCalls: [
-                        ...(m.toolCalls ?? []),
-                        {
-                          id: event.id,
-                          name: event.name,
-                          input: event.input,
-                        },
-                      ],
-                    }
-                    : m,
-                ),
-              );
-            } else if (event.type === "tool_result") {
-              setMessages((prev) =>
-                prev.map((m) =>
-                  m.id === assistantMsgId
-                    ? {
-                      ...m,
-                      toolCalls: (m.toolCalls ?? []).map((tc) =>
-                        tc.id === event.id ? { ...tc, result: event.content } : tc,
-                      ),
-                    }
-                    : m,
-                ),
-              );
-            } else if (event.type === "error") {
-              setMessages((prev) =>
-                prev.map((m) =>
-                  m.id === assistantMsgId
-                    ? {
-                      ...m,
-                      content: m.content
-                        ? `${m.content}\n\n⚠️ ${event.message}`
-                        : `⚠️ ${event.message}`,
-                      streaming: false,
-                    }
-                    : m,
-                ),
-              );
-            } else if (event.type === "done") {
-              setMessages((prev) =>
-                prev.map((m) =>
-                  m.id === assistantMsgId ? { ...m, streaming: false } : m,
-                ),
-              );
-            }
-          }
+        for (const event of parsed.events) {
+          setMessages((prev) =>
+            prev.map((message) =>
+              message.id === assistantMsgId ? applyChatEvent(message, event) : message,
+            ),
+          );
         }
       }
     } catch (err) {
@@ -453,11 +320,7 @@ export function ChatPage() {
   const handleGoogleSignIn = async () => {
     if (!providerInfo) return;
     try {
-      const res = await fetch(
-        `${API_BASE_URL}/chat/auth/google/start?providerId=${encodeURIComponent(providerInfo.id)}`,
-      );
-      if (!res.ok) return;
-      const { url } = (await res.json()) as { url: string };
+      const url = await getChatGoogleAuthUrl(providerInfo.id);
       window.open(url, "_blank");
     } catch {
       // ignore

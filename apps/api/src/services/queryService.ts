@@ -25,7 +25,39 @@ type PlayerQuery = {
   toGW?: number;
 };
 
-function mapBoolean(value: number) {
+type PlayerCardRow = PlayerCard;
+type GameweekRow = Omit<GameweekSummary, "isCurrent" | "isFinished"> & {
+  isCurrent: number;
+  isFinished: number;
+};
+type FixtureRow = Omit<FixtureCard, "finished" | "started"> & {
+  finished: number;
+  started: number;
+};
+type PlayerHistoryRow = Omit<PlayerHistoryPoint, "wasHome"> & {
+  wasHome: number;
+};
+type MyTeamPickRow = PlayerCardRow & {
+  slotId: string;
+  position: number;
+  multiplier: number;
+  isCaptain: number;
+  isViceCaptain: number;
+  sellingPrice: number;
+  purchasePrice: number;
+  role: MyTeamPick["role"];
+  benchOrder: number | null;
+  gwPoints?: number;
+};
+type PlayerTransferPrefix = "playerIn" | "playerOut";
+type PlayerTransferRow = {
+  id: string;
+  gameweek: number;
+  madeAt: string;
+  hitCost: number | null;
+} & Record<string, PlayerCard[keyof PlayerCard]>;
+
+function mapBoolean(value: number | null | undefined) {
   return Boolean(value);
 }
 
@@ -33,19 +65,16 @@ export class QueryService {
   constructor(private readonly db: AppDatabase) {}
 
   getGameweeks(): GameweekSummary[] {
-    return this.db
+    const rows = this.db
       .prepare(
         `SELECT id, name, deadline_time AS deadlineTime, average_entry_score AS averageEntryScore,
                 highest_score AS highestScore, is_current AS isCurrent, is_finished AS isFinished
          FROM gameweeks
          ORDER BY id`,
       )
-      .all()
-      .map((row: any) => ({
-        ...row,
-        isCurrent: mapBoolean(row.isCurrent),
-        isFinished: mapBoolean(row.isFinished),
-      }));
+      .all() as GameweekRow[];
+
+    return rows.map((row) => this.mapGameweek(row));
   }
 
   getTeams(): TeamSummary[] {
@@ -75,7 +104,7 @@ export class QueryService {
 
     const where = filters.length > 0 ? `WHERE ${filters.join(" AND ")}` : "";
 
-    return this.db
+    const rows = this.db
       .prepare(
         `SELECT f.id, f.code, f.event_id AS eventId, f.kickoff_time AS kickoffTime,
                 f.team_h AS teamH, f.team_a AS teamA,
@@ -89,12 +118,9 @@ export class QueryService {
          ${where}
          ORDER BY COALESCE(f.event_id, 999), COALESCE(f.kickoff_time, '')`,
       )
-      .all(params)
-      .map((row: any) => ({
-        ...row,
-        finished: mapBoolean(row.finished),
-        started: mapBoolean(row.started),
-      }));
+      .all(params) as FixtureRow[];
+
+    return rows.map((row) => this.mapFixture(row));
   }
 
   getPlayers(query: PlayerQuery): PlayerCard[] {
@@ -168,7 +194,7 @@ export class QueryService {
            GROUP BY p.id
            ORDER BY COALESCE(SUM(ph.total_points), 0) DESC, p.web_name ASC`,
         )
-        .all(params) as PlayerCard[];
+        .all(params) as PlayerCardRow[];
     }
 
     // Default: season totals from the players table
@@ -206,7 +232,7 @@ export class QueryService {
          ${where}
          ORDER BY ${orderBy}, p.web_name ASC`,
       )
-      .all(params) as PlayerCard[];
+      .all(params) as PlayerCardRow[];
   }
 
   getPlayerById(playerId: number): PlayerDetail | null {
@@ -235,13 +261,13 @@ export class QueryService {
          JOIN positions pos ON pos.id = p.position_id
          WHERE p.id = ?`,
       )
-      .get(playerId) as PlayerCard | undefined;
+      .get(playerId) as PlayerCardRow | undefined;
 
     if (!player) {
       return null;
     }
 
-    const history = this.db
+    const historyRows = this.db
       .prepare(
         `SELECT player_id AS element, round, total_points AS totalPoints, minutes, goals_scored AS goalsScored,
                 assists, clean_sheets AS cleanSheets, bonus, bps, creativity,
@@ -265,13 +291,10 @@ export class QueryService {
          WHERE player_id = ?
          ORDER BY round DESC`,
       )
-      .all(playerId)
-      .map((row: any) => ({
-        ...row,
-        wasHome: mapBoolean(row.wasHome),
-      })) as PlayerHistoryPoint[];
+      .all(playerId) as PlayerHistoryRow[];
+    const history = historyRows.map((row) => this.mapPlayerHistory(row));
 
-    const upcomingFixtures = this.db
+    const upcomingFixtureRows = this.db
       .prepare(
         `SELECT pf.fixture_id AS id, pf.code, pf.event_id AS eventId, pf.kickoff_time AS kickoffTime,
                 pf.team_h AS teamH, pf.team_a AS teamA,
@@ -285,12 +308,8 @@ export class QueryService {
          WHERE pf.player_id = ?
          ORDER BY COALESCE(pf.event_id, 999), COALESCE(pf.kickoff_time, '')`,
       )
-      .all(playerId)
-      .map((row: any) => ({
-        ...row,
-        finished: mapBoolean(row.finished),
-        started: mapBoolean(row.started),
-      })) as FixtureCard[];
+      .all(playerId) as FixtureRow[];
+    const upcomingFixtures = upcomingFixtureRows.map((row) => this.mapFixture(row));
 
     return { player, history, upcomingFixtures };
   }
@@ -357,7 +376,7 @@ export class QueryService {
     const currentGameweek = history[0]?.gameweek ?? null;
     const current = history[0];
     const picks = currentGameweek
-      ? (this.db
+      ? ((this.db
           .prepare(
             `SELECT
                'pick-' || mp.position AS slotId,
@@ -390,61 +409,11 @@ export class QueryService {
              WHERE mp.account_id = ? AND mp.gameweek_id = ?
              ORDER BY mp.position`,
           )
-          .all(selectedAccount.id, currentGameweek)
-          .map((row: any) => ({
-            slotId: row.slotId,
-            position: row.position,
-            multiplier: row.multiplier,
-            isCaptain: mapBoolean(row.isCaptain),
-            isViceCaptain: mapBoolean(row.isViceCaptain),
-            sellingPrice: row.sellingPrice,
-            purchasePrice: row.purchasePrice,
-            role: row.role,
-            benchOrder: row.benchOrder,
-            player: {
-              id: row.id,
-              webName: row.webName,
-              firstName: row.firstName,
-              secondName: row.secondName,
-              teamId: row.teamId,
-              teamName: row.teamName,
-              teamShortName: row.teamShortName,
-              imagePath: row.imagePath,
-              positionId: row.positionId,
-              positionName: row.positionName,
-              nowCost: row.nowCost,
-              totalPoints: row.totalPoints,
-              form: row.form,
-              selectedByPercent: row.selectedByPercent,
-              pointsPerGame: row.pointsPerGame,
-              goalsScored: row.goalsScored,
-              assists: row.assists,
-              cleanSheets: row.cleanSheets,
-              minutes: row.minutes,
-              bonus: row.bonus,
-              bps: row.bps,
-              creativity: row.creativity,
-              influence: row.influence,
-              threat: row.threat,
-              ictIndex: row.ictIndex,
-              expectedGoals: row.expectedGoals,
-              expectedAssists: row.expectedAssists,
-              expectedGoalInvolvements: row.expectedGoalInvolvements,
-              expectedGoalPerformance: row.expectedGoalPerformance,
-              expectedAssistPerformance: row.expectedAssistPerformance,
-              expectedGoalInvolvementPerformance: row.expectedGoalInvolvementPerformance,
-              expectedGoalsConceded: row.expectedGoalsConceded,
-              cleanSheetsPer90: row.cleanSheetsPer90,
-              starts: row.starts,
-              tackles: row.tackles,
-              recoveries: row.recoveries,
-              defensiveContribution: row.defensiveContribution,
-              status: row.status,
-            },
-          })) as MyTeamPick[])
+          .all(selectedAccount.id, currentGameweek) as MyTeamPickRow[])
+          .map((row) => this.mapMyTeamPick(row)))
       : [];
 
-    const transfers = this.db
+    const transferRows = this.db
       .prepare(
         `SELECT mt.transfer_id AS id, mt.gameweek_id AS gameweek, mt.transferred_at AS madeAt,
                 CASE
@@ -495,15 +464,15 @@ export class QueryService {
          WHERE mt.account_id = ?
          ORDER BY mt.transferred_at DESC`,
       )
-      .all(selectedAccount.id)
-      .map((row: any) => ({
+      .all(selectedAccount.id) as PlayerTransferRow[];
+    const transfers: MyTeamTransfer[] = transferRows.map((row) => ({
         id: row.id,
         gameweek: row.gameweek,
         madeAt: row.madeAt,
         cost: row.hitCost ?? 0,
         playerIn: this.mapPlayerFromPrefix(row, "playerIn"),
         playerOut: this.mapPlayerFromPrefix(row, "playerOut"),
-      })) as MyTeamTransfer[];
+      }));
 
     const seasons = this.db
       .prepare(
@@ -533,7 +502,7 @@ export class QueryService {
   }
 
   getMyTeamPicksForGameweek(accountId: number, gameweek: number): MyTeamGameweekPicksResponse {
-    const picks = (this.db
+    const pickRows = this.db
       .prepare(
         `SELECT
            'pick-' || mp.position AS slotId,
@@ -568,59 +537,8 @@ export class QueryService {
          WHERE mp.account_id = ? AND mp.gameweek_id = ?
          ORDER BY mp.position`,
       )
-      .all(accountId, gameweek)
-      .map((row: any) => ({
-        slotId: row.slotId,
-        position: row.position,
-        multiplier: row.multiplier,
-        isCaptain: mapBoolean(row.isCaptain),
-        isViceCaptain: mapBoolean(row.isViceCaptain),
-        sellingPrice: row.sellingPrice,
-        purchasePrice: row.purchasePrice,
-        role: row.role,
-        benchOrder: row.benchOrder,
-        gwPoints: row.gwPoints,
-        player: {
-          id: row.id,
-          webName: row.webName,
-          firstName: row.firstName,
-          secondName: row.secondName,
-          teamId: row.teamId,
-          teamName: row.teamName,
-          teamShortName: row.teamShortName,
-          imagePath: row.imagePath,
-          positionId: row.positionId,
-          positionName: row.positionName,
-          nowCost: row.nowCost,
-          totalPoints: row.totalPoints,
-          form: row.form,
-          selectedByPercent: row.selectedByPercent,
-          pointsPerGame: row.pointsPerGame,
-          goalsScored: row.goalsScored,
-          assists: row.assists,
-          cleanSheets: row.cleanSheets,
-          minutes: row.minutes,
-          bonus: row.bonus,
-          bps: row.bps,
-          creativity: row.creativity,
-          influence: row.influence,
-          threat: row.threat,
-          ictIndex: row.ictIndex,
-          expectedGoals: row.expectedGoals,
-          expectedAssists: row.expectedAssists,
-          expectedGoalInvolvements: row.expectedGoalInvolvements,
-          expectedGoalPerformance: row.expectedGoalPerformance,
-          expectedAssistPerformance: row.expectedAssistPerformance,
-          expectedGoalInvolvementPerformance: row.expectedGoalInvolvementPerformance,
-          expectedGoalsConceded: row.expectedGoalsConceded,
-          cleanSheetsPer90: row.cleanSheetsPer90,
-          starts: row.starts,
-          tackles: row.tackles,
-          recoveries: row.recoveries,
-          defensiveContribution: row.defensiveContribution,
-          status: row.status,
-        },
-      })) as MyTeamPick[]);
+      .all(accountId, gameweek) as MyTeamPickRow[];
+    const picks = pickRows.map((row) => this.mapMyTeamPick(row));
 
     const gw = this.db
       .prepare(
@@ -638,46 +556,126 @@ export class QueryService {
     };
   }
 
-  private mapPlayerFromPrefix(row: any, prefix: string): PlayerCard {
+  private mapGameweek(row: GameweekRow): GameweekSummary {
     return {
-      id: row[`${prefix}Id`],
-      webName: row[`${prefix}WebName`],
-      firstName: row[`${prefix}FirstName`],
-      secondName: row[`${prefix}SecondName`],
-      teamId: row[`${prefix}TeamId`],
-      teamName: row[`${prefix}TeamName`],
-      teamShortName: row[`${prefix}TeamShortName`],
-      imagePath: row[`${prefix}ImagePath`],
-      positionId: row[`${prefix}PositionId`],
-      positionName: row[`${prefix}PositionName`],
-      nowCost: row[`${prefix}NowCost`],
-      totalPoints: row[`${prefix}TotalPoints`],
-      form: row[`${prefix}Form`],
-      selectedByPercent: row[`${prefix}SelectedByPercent`],
-      pointsPerGame: row[`${prefix}PointsPerGame`],
-      goalsScored: row[`${prefix}GoalsScored`],
-      assists: row[`${prefix}Assists`],
-      cleanSheets: row[`${prefix}CleanSheets`],
-      minutes: row[`${prefix}Minutes`],
-      bonus: row[`${prefix}Bonus`],
-      bps: row[`${prefix}Bps`],
-      creativity: row[`${prefix}Creativity`],
-      influence: row[`${prefix}Influence`],
-      threat: row[`${prefix}Threat`],
-      ictIndex: row[`${prefix}IctIndex`],
-      expectedGoals: row[`${prefix}ExpectedGoals`],
-      expectedAssists: row[`${prefix}ExpectedAssists`],
-      expectedGoalInvolvements: row[`${prefix}ExpectedGoalInvolvements`],
-      expectedGoalPerformance: row[`${prefix}ExpectedGoalPerformance`],
-      expectedAssistPerformance: row[`${prefix}ExpectedAssistPerformance`],
-      expectedGoalInvolvementPerformance: row[`${prefix}ExpectedGoalInvolvementPerformance`],
-      expectedGoalsConceded: row[`${prefix}ExpectedGoalsConceded`],
-      cleanSheetsPer90: row[`${prefix}CleanSheetsPer90`],
-      starts: row[`${prefix}Starts`],
-      tackles: row[`${prefix}Tackles`],
-      recoveries: row[`${prefix}Recoveries`],
-      defensiveContribution: row[`${prefix}DefensiveContribution`],
-      status: row[`${prefix}Status`],
+      ...row,
+      isCurrent: mapBoolean(row.isCurrent),
+      isFinished: mapBoolean(row.isFinished),
+    };
+  }
+
+  private mapFixture(row: FixtureRow): FixtureCard {
+    return {
+      ...row,
+      finished: mapBoolean(row.finished),
+      started: mapBoolean(row.started),
+    };
+  }
+
+  private mapPlayerHistory(row: PlayerHistoryRow): PlayerHistoryPoint {
+    return {
+      ...row,
+      wasHome: mapBoolean(row.wasHome),
+    };
+  }
+
+  private mapMyTeamPick(row: MyTeamPickRow): MyTeamPick {
+    const pick: MyTeamPick = {
+      slotId: row.slotId,
+      position: row.position,
+      multiplier: row.multiplier,
+      isCaptain: mapBoolean(row.isCaptain),
+      isViceCaptain: mapBoolean(row.isViceCaptain),
+      sellingPrice: row.sellingPrice,
+      purchasePrice: row.purchasePrice,
+      role: row.role,
+      benchOrder: row.benchOrder,
+      player: this.mapPlayerCard(row),
+    };
+
+    if (row.gwPoints !== undefined) {
+      pick.gwPoints = row.gwPoints;
+    }
+
+    return pick;
+  }
+
+  private mapPlayerCard(row: PlayerCardRow): PlayerCard {
+    return { ...row };
+  }
+
+  private getPrefixedPlayerValue<K extends keyof PlayerCard>(
+    row: PlayerTransferRow,
+    prefix: PlayerTransferPrefix,
+    suffix: string,
+  ): PlayerCard[K] {
+    return row[`${prefix}${suffix}`] as PlayerCard[K];
+  }
+
+  private mapPlayerFromPrefix(row: PlayerTransferRow, prefix: PlayerTransferPrefix): PlayerCard {
+    return {
+      id: this.getPrefixedPlayerValue<"id">(row, prefix, "Id"),
+      webName: this.getPrefixedPlayerValue<"webName">(row, prefix, "WebName"),
+      firstName: this.getPrefixedPlayerValue<"firstName">(row, prefix, "FirstName"),
+      secondName: this.getPrefixedPlayerValue<"secondName">(row, prefix, "SecondName"),
+      teamId: this.getPrefixedPlayerValue<"teamId">(row, prefix, "TeamId"),
+      teamName: this.getPrefixedPlayerValue<"teamName">(row, prefix, "TeamName"),
+      teamShortName: this.getPrefixedPlayerValue<"teamShortName">(row, prefix, "TeamShortName"),
+      imagePath: this.getPrefixedPlayerValue<"imagePath">(row, prefix, "ImagePath"),
+      positionId: this.getPrefixedPlayerValue<"positionId">(row, prefix, "PositionId"),
+      positionName: this.getPrefixedPlayerValue<"positionName">(row, prefix, "PositionName"),
+      nowCost: this.getPrefixedPlayerValue<"nowCost">(row, prefix, "NowCost"),
+      totalPoints: this.getPrefixedPlayerValue<"totalPoints">(row, prefix, "TotalPoints"),
+      form: this.getPrefixedPlayerValue<"form">(row, prefix, "Form"),
+      selectedByPercent: this.getPrefixedPlayerValue<"selectedByPercent">(row, prefix, "SelectedByPercent"),
+      pointsPerGame: this.getPrefixedPlayerValue<"pointsPerGame">(row, prefix, "PointsPerGame"),
+      goalsScored: this.getPrefixedPlayerValue<"goalsScored">(row, prefix, "GoalsScored"),
+      assists: this.getPrefixedPlayerValue<"assists">(row, prefix, "Assists"),
+      cleanSheets: this.getPrefixedPlayerValue<"cleanSheets">(row, prefix, "CleanSheets"),
+      minutes: this.getPrefixedPlayerValue<"minutes">(row, prefix, "Minutes"),
+      bonus: this.getPrefixedPlayerValue<"bonus">(row, prefix, "Bonus"),
+      bps: this.getPrefixedPlayerValue<"bps">(row, prefix, "Bps"),
+      creativity: this.getPrefixedPlayerValue<"creativity">(row, prefix, "Creativity"),
+      influence: this.getPrefixedPlayerValue<"influence">(row, prefix, "Influence"),
+      threat: this.getPrefixedPlayerValue<"threat">(row, prefix, "Threat"),
+      ictIndex: this.getPrefixedPlayerValue<"ictIndex">(row, prefix, "IctIndex"),
+      expectedGoals: this.getPrefixedPlayerValue<"expectedGoals">(row, prefix, "ExpectedGoals"),
+      expectedAssists: this.getPrefixedPlayerValue<"expectedAssists">(row, prefix, "ExpectedAssists"),
+      expectedGoalInvolvements: this.getPrefixedPlayerValue<"expectedGoalInvolvements">(
+        row,
+        prefix,
+        "ExpectedGoalInvolvements",
+      ),
+      expectedGoalPerformance: this.getPrefixedPlayerValue<"expectedGoalPerformance">(
+        row,
+        prefix,
+        "ExpectedGoalPerformance",
+      ),
+      expectedAssistPerformance: this.getPrefixedPlayerValue<"expectedAssistPerformance">(
+        row,
+        prefix,
+        "ExpectedAssistPerformance",
+      ),
+      expectedGoalInvolvementPerformance: this.getPrefixedPlayerValue<"expectedGoalInvolvementPerformance">(
+        row,
+        prefix,
+        "ExpectedGoalInvolvementPerformance",
+      ),
+      expectedGoalsConceded: this.getPrefixedPlayerValue<"expectedGoalsConceded">(
+        row,
+        prefix,
+        "ExpectedGoalsConceded",
+      ),
+      cleanSheetsPer90: this.getPrefixedPlayerValue<"cleanSheetsPer90">(row, prefix, "CleanSheetsPer90"),
+      starts: this.getPrefixedPlayerValue<"starts">(row, prefix, "Starts"),
+      tackles: this.getPrefixedPlayerValue<"tackles">(row, prefix, "Tackles"),
+      recoveries: this.getPrefixedPlayerValue<"recoveries">(row, prefix, "Recoveries"),
+      defensiveContribution: this.getPrefixedPlayerValue<"defensiveContribution">(
+        row,
+        prefix,
+        "DefensiveContribution",
+      ),
+      status: this.getPrefixedPlayerValue<"status">(row, prefix, "Status"),
     };
   }
 }

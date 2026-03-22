@@ -5,6 +5,12 @@ import type { FixtureCard, GameweekSummary, TeamSummary } from "@fpl/contracts";
 import { getOverview, getFixtures } from "@/api/client";
 import { Calendar, ChevronLeft, ChevronRight, Shield } from "lucide-react";
 import { GlowCard, BGPattern } from "@/components/ui/glow-card";
+import {
+  buildFixturesSearchParams,
+  getDefaultFixtureGameweek,
+  getFixturesCacheKey,
+  parseNullableNumber,
+} from "./fixturesPageUtils";
 
 type AsyncState<T> =
   | { status: "loading" }
@@ -21,17 +27,11 @@ function getSavedParam(key: string): string {
   return new URLSearchParams(_fixturesSavedParams).get(key) ?? "";
 }
 
-function parseNullableNumber(value: string | null): number | null {
-  if (!value) return null;
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : null;
-}
-
 export function FixturesPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const initialGW = parseNullableNumber(searchParams.get("gw") ?? getSavedParam("gw"));
   const initialTeam = parseNullableNumber(searchParams.get("team") ?? getSavedParam("team"));
-  const initialKey = `${initialGW ?? ""}-${initialTeam ?? ""}`;
+  const initialKey = getFixturesCacheKey(initialGW, initialTeam);
   const [gameweeks, setGameweeks] = useState<GameweekSummary[]>(_fixturesOverviewCache?.gameweeks ?? []);
   const [teams, setTeams] = useState<TeamSummary[]>(_fixturesOverviewCache?.teams ?? []);
   const [selectedGW, setSelectedGW] = useState<number | null>(initialGW);
@@ -52,18 +52,14 @@ export function FixturesPage() {
       setTeams(data.teams);
       // Only set default GW if nothing was previously selected
       if (initialGW === null) {
-        const currentGW =
-          data.gameweeks.find((gw) => gw.isCurrent) ??
-          data.gameweeks.find((gw) => !gw.isFinished) ??
-          data.gameweeks[0];
-        if (currentGW) setSelectedGW(currentGW.id);
+        setSelectedGW(getDefaultFixtureGameweek(data.gameweeks));
       }
     });
   }, [initialGW]);
 
   // Load fixtures when gameweek or team filter changes — check cache first
   const loadFixtures = useCallback((gwId: number | null, teamId: number | null) => {
-    const key = `${gwId ?? ""}-${teamId ?? ""}`;
+    const key = getFixturesCacheKey(gwId, teamId);
     const cached = _fixturesDataCache.get(key);
     if (cached) {
       setFixturesState({ status: "ready", data: cached });
@@ -88,9 +84,7 @@ export function FixturesPage() {
   }, [selectedGW, selectedTeam, loadFixtures]);
 
   useEffect(() => {
-    const params = new URLSearchParams();
-    if (selectedGW !== null) params.set("gw", String(selectedGW));
-    if (selectedTeam !== null) params.set("team", String(selectedTeam));
+    const params = buildFixturesSearchParams(selectedGW, selectedTeam);
     _fixturesSavedParams = params.toString();
     setSearchParams(params, { replace: true });
   }, [selectedGW, selectedTeam, setSearchParams]);

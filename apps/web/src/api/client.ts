@@ -8,6 +8,7 @@ import type {
   MyTeamPageResponse,
   MyTeamGameweekPicksResponse,
 } from "@fpl/contracts";
+import type { ChatMessage, ProviderInfo } from "@/pages/chatPageUtils";
 
 function resolveApiBaseUrl() {
   if (import.meta.env.VITE_API_BASE_URL) {
@@ -121,4 +122,34 @@ export function syncMyTeam(params?: { accountId?: number; gameweek?: number; for
 
 export function getMyTeamGameweekPicks(accountId: number, gameweek: number) {
   return request<MyTeamGameweekPicksResponse>(`/my-team/picks?accountId=${accountId}&gameweek=${gameweek}`);
+}
+
+export function getChatProviders() {
+  return request<ProviderInfo[]>("/chat/providers");
+}
+
+export async function getChatGoogleAuthUrl(providerId: string) {
+  const encodedProviderId = encodeURIComponent(providerId);
+  const response = await request<{ url: string }>(`/chat/auth/google/start?providerId=${encodedProviderId}`);
+  return response.url;
+}
+
+export async function streamChat(
+  providerId: string,
+  messages: ChatMessage[],
+): Promise<ReadableStreamDefaultReader<Uint8Array>> {
+  const response = await fetch(`${API_BASE_URL}/chat/stream`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({ providerId, messages }),
+  });
+
+  if (!response.ok || !response.body) {
+    const message = await response.text().catch(() => `Request failed: ${response.status}`);
+    throw new Error(message || `Request failed: ${response.status}`);
+  }
+
+  return response.body.getReader();
 }

@@ -1,4 +1,4 @@
-import { GoogleGenAI, type Tool, type Content, type Part } from "@google/genai";
+import { GoogleGenAI, Type, type Tool, type Content, type Part, type Schema } from "@google/genai";
 import type { AppDatabase } from "../../db/database.js";
 import type { ProviderConfig } from "../providerConfig.js";
 import type { ChatMessage, Emitter } from "../chatTypes.js";
@@ -6,13 +6,48 @@ import { FPL_TOOL_DEFINITIONS, executeTool, type FplToolName } from "../fplTools
 import * as oauthManager from "../oauthManager.js";
 import { SYSTEM_PROMPT } from "../schemaContext.js";
 
+type GeminiFunctionDeclaration = NonNullable<Tool["functionDeclarations"]>[number];
+type JsonSchema =
+  | {
+      type: "object";
+      properties: Record<string, JsonSchema>;
+      required: readonly string[];
+    }
+  | {
+      type: "string";
+      description?: string;
+    };
+
+function toGeminiSchema(schema: JsonSchema): Schema {
+  if (schema.type === "object") {
+    return {
+      type: Type.OBJECT,
+      properties: Object.fromEntries(
+        Object.entries(schema.properties).map(([key, value]) => [key, toGeminiSchema(value)]),
+      ),
+      required: [...schema.required],
+    };
+  }
+
+  return {
+    type: Type.STRING,
+    description: schema.description,
+  };
+}
+
+function toGeminiFunctionDeclaration(
+  tool: (typeof FPL_TOOL_DEFINITIONS)[number],
+): GeminiFunctionDeclaration {
+  return {
+    name: tool.name,
+    description: tool.description,
+    parameters: toGeminiSchema(tool.parameters as JsonSchema),
+  };
+}
+
 const GEMINI_TOOLS: Tool[] = [
   {
-    functionDeclarations: FPL_TOOL_DEFINITIONS.map((t) => ({
-      name: t.name,
-      description: t.description,
-      parameters: t.parameters as any,
-    })),
+    functionDeclarations: FPL_TOOL_DEFINITIONS.map((tool) => toGeminiFunctionDeclaration(tool)),
   },
 ];
 

@@ -1,55 +1,21 @@
 import { describe, expect, it } from "vitest";
-import type { GameweekSummary, PlayerCard } from "@fpl/contracts";
+import type { GameweekSummary } from "@fpl/contracts";
 import { createMockManagers, evaluatePlanner, replaceSquadPlayer } from "./my-team";
-
-function makePlayer(id: number, positionId: number, teamId: number, totalPoints: number): PlayerCard {
-  return {
-    id,
-    webName: `Player ${id}`,
-    firstName: "Player",
-    secondName: String(id),
-    teamId,
-    teamName: `Team ${teamId}`,
-    teamShortName: `T${teamId}`,
-    imagePath: null,
-    positionId,
-    positionName: ["", "Goalkeeper", "Defender", "Midfielder", "Forward"][positionId],
-    nowCost: 45 + id,
-    totalPoints,
-    form: 5 + (id % 4),
-    selectedByPercent: 10 + id,
-    pointsPerGame: 4.5,
-    goalsScored: positionId === 4 ? 10 : 3,
-    assists: positionId === 3 ? 8 : 2,
-    cleanSheets: positionId < 3 ? 8 : 3,
-    minutes: 900 + id,
-    bonus: 10,
-    bps: 100,
-    creativity: 30,
-    influence: 30,
-    threat: 30,
-    ictIndex: 30,
-    expectedGoals: 5,
-    expectedAssists: 4,
-    expectedGoalInvolvements: 9,
-    expectedGoalPerformance: 1,
-    expectedAssistPerformance: 1,
-    expectedGoalInvolvementPerformance: 2,
-    expectedGoalsConceded: 8,
-    cleanSheetsPer90: 0.2,
-    starts: 10,
-    tackles: 8,
-    recoveries: 12,
-    defensiveContribution: 9,
-    status: "a",
-  };
-}
+import { makePlayer } from "../test/factories";
 
 const players = [
-  ...Array.from({ length: 4 }, (_, index) => makePlayer(index + 1, 1, index + 1, 100 - index)),
-  ...Array.from({ length: 8 }, (_, index) => makePlayer(index + 10, 2, (index % 5) + 1, 120 - index)),
-  ...Array.from({ length: 8 }, (_, index) => makePlayer(index + 30, 3, (index % 5) + 1, 140 - index)),
-  ...Array.from({ length: 5 }, (_, index) => makePlayer(index + 50, 4, (index % 5) + 1, 160 - index)),
+  ...Array.from({ length: 4 }, (_, index) =>
+    makePlayer(index + 1, 1, index + 1, 100 - index, { imagePath: null }),
+  ),
+  ...Array.from({ length: 8 }, (_, index) =>
+    makePlayer(index + 10, 2, (index % 5) + 1, 120 - index, { imagePath: null }),
+  ),
+  ...Array.from({ length: 8 }, (_, index) =>
+    makePlayer(index + 30, 3, (index % 5) + 1, 140 - index, { imagePath: null }),
+  ),
+  ...Array.from({ length: 5 }, (_, index) =>
+    makePlayer(index + 50, 4, (index % 5) + 1, 160 - index, { imagePath: null }),
+  ),
 ];
 
 const gameweeks: GameweekSummary[] = [

@@ -57,6 +57,24 @@ function toSquadEntry(pick: MyTeamPick): SquadEntry {
   };
 }
 
+function dedupePitchEntries(entries: SquadEntry[]): SquadEntry[] {
+  const seenSlotIds = new Set<string>();
+  const seenPlayerIds = new Set<number>();
+  const uniqueEntries: SquadEntry[] = [];
+
+  for (const entry of entries) {
+    if (seenSlotIds.has(entry.slotId) || seenPlayerIds.has(entry.player.id)) {
+      continue;
+    }
+
+    seenSlotIds.add(entry.slotId);
+    seenPlayerIds.add(entry.player.id);
+    uniqueEntries.push(entry);
+  }
+
+  return uniqueEntries;
+}
+
 // Module-level cache — persists across page navigations within the same tab session
 type MyTeamCache = {
   state: { status: "ready"; payload: MyTeamPageResponse };
@@ -695,9 +713,11 @@ export function MyTeamPage() {
               {/* Pitch field */}
               {(() => {
                 const isHistorical = viewGameweek !== payload.currentGameweek;
-                const displayPicks = isHistorical
-                  ? historicalData?.picks.map(toSquadEntry) ?? []
-                  : payload.picks.map(toSquadEntry);
+                const displayPicks = dedupePitchEntries(
+                  isHistorical
+                    ? historicalData?.picks.map(toSquadEntry) ?? []
+                    : payload.picks.map(toSquadEntry),
+                );
                 const gwPointsMap = Object.fromEntries(
                   (historicalData?.picks ?? []).map((p) => [p.slotId, p.gwPoints ?? 0]),
                 );
