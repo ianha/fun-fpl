@@ -43,6 +43,12 @@ export function createApiRouter(db: AppDatabase) {
     );
   });
 
+  // Specific sub-routes must come BEFORE /:id wildcard
+  router.get("/players/xpts", (req, res) => {
+    const gw = req.query.gw ? Number(req.query.gw) : undefined;
+    res.json(queryService.getPlayerXpts(gw));
+  });
+
   router.get("/players/:id", (req, res) => {
     const player = queryService.getPlayerById(Number(req.params.id));
     if (!player) {
@@ -104,11 +110,6 @@ export function createApiRouter(db: AppDatabase) {
 
   router.get("/fixtures/fdr", (_req, res) => {
     res.json(queryService.getFdrData());
-  });
-
-  router.get("/players/xpts", (req, res) => {
-    const gw = req.query.gw ? Number(req.query.gw) : undefined;
-    res.json(queryService.getPlayerXpts(gw));
   });
 
   router.get("/my-team/captain-pick", (req, res) => {
