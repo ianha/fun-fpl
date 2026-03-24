@@ -34,6 +34,8 @@ vi.mock("./api/client", () => ({
   linkMyTeamAccount: apiMocks.linkMyTeamAccount,
   syncMyTeam: apiMocks.syncMyTeam,
   getPlayer: apiMocks.getPlayer,
+  getPlayerXpts: vi.fn(() => Promise.resolve([])),
+  getCaptainRecommendation: vi.fn(() => Promise.resolve([])),
 }));
 
 describe("App", () => {

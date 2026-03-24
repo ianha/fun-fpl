@@ -126,6 +126,7 @@ vi.mock("@/api/client", () => ({
   getMyTeamGameweekPicks: getMyTeamGameweekPicksMock,
   linkMyTeamAccount: linkMyTeamAccountMock,
   syncMyTeam: syncMyTeamMock,
+  getCaptainRecommendation: vi.fn(() => Promise.resolve([])),
   resolveAssetUrl: vi.fn(() => null),
 }));
 
