@@ -1,7 +1,17 @@
-import { defineConfig, loadEnv } from "vite";
+import { createLogger, defineConfig, loadEnv } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import path from "path";
+
+// Custom logger that suppresses ECONNREFUSED proxy noise during dev startup.
+// Vite's built-in proxy error handler logs even when our configure handler returns early,
+// so we filter at the logger level. EventSource clients auto-reconnect once the API is up.
+const logger = createLogger();
+const _originalError = logger.error.bind(logger);
+logger.error = (msg, options) => {
+  if (options?.error && String(options.error).includes("ECONNREFUSED")) return;
+  _originalError(msg, options);
+};
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, path.resolve(process.cwd(), "../../"), "");
@@ -12,6 +22,7 @@ export default defineConfig(({ mode }) => {
     : undefined;
 
   return {
+    customLogger: logger,
     envDir: "../../",
     plugins: [react(), tailwindcss()],
     resolve: {
