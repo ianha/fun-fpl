@@ -7,6 +7,7 @@ import { getCaptainRecommendation, getMyTeam, getMyTeamGameweekPicks, getPlayer,
 import { BGPattern, GlowCard } from "@/components/ui/glow-card";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { ShareRecapDialog } from "@/components/ui/ShareRecapDialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
@@ -279,6 +280,7 @@ export function MyTeamPage() {
   const [selectedPick, setSelectedPick] = useState<{ pick: MyTeamPick; gwPoints: number } | null>(null);
   const [playerDetail, setPlayerDetail] = useState<PlayerDetail | null>(null);
   const [playerDetailLoading, setPlayerDetailLoading] = useState(false);
+  const [shareGw, setShareGw] = useState<number | null>(null);
 
   useEffect(() => {
     if (!selectedPick) {
@@ -820,6 +822,17 @@ export function MyTeamPage() {
                     Updated {new Date(liveData.lastUpdated).toLocaleTimeString()}
                   </span>
                 )}
+                {viewGameweek && selectedAccount && (
+                  <button
+                    type="button"
+                    title="Share GW Recap card"
+                    onClick={() => setShareGw(viewGameweek)}
+                    className="ml-auto inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-3 py-1 text-xs font-semibold text-white/60 hover:bg-white/10 hover:text-accent transition-colors cursor-pointer"
+                  >
+                    <Share2 className="h-3.5 w-3.5" />
+                    Share recap
+                  </button>
+                )}
               </div>
 
               {/* Pitch field */}
@@ -1018,16 +1031,15 @@ export function MyTeamPage() {
                         <td className="px-3 py-2 text-right text-xs tabular-nums whitespace-nowrap text-white/50">{formatCost(row.value)}</td>
                         <td className="px-3 py-2 text-right whitespace-nowrap">
                           {selectedAccount && (
-                            <a
-                              href={`/api/my-team/${selectedAccount.id}/recap/${row.gameweek}`}
-                              target="_blank"
-                              rel="noreferrer"
+                            <button
+                              type="button"
                               title="Share GW Recap"
-                              className="inline-flex items-center gap-1 rounded-lg bg-white/5 px-2.5 py-1.5 text-xs font-semibold text-white/60 hover:bg-white/10 hover:text-accent transition-colors"
+                              onClick={() => setShareGw(row.gameweek)}
+                              className="inline-flex items-center gap-1 rounded-lg bg-white/5 px-2.5 py-1.5 text-xs font-semibold text-white/60 hover:bg-white/10 hover:text-accent transition-colors cursor-pointer"
                             >
                               <Share2 className="h-3.5 w-3.5" />
                               Share
-                            </a>
+                            </button>
                           )}
                         </td>
                       </tr>
@@ -1260,6 +1272,17 @@ export function MyTeamPage() {
         })()}
       </DialogContent>
     </Dialog>
+
+    {/* ── SHARE RECAP DIALOG ───────────────────────────────────── */}
+    {shareGw !== null && payload && selectedAccount && (
+      <ShareRecapDialog
+        open={shareGw !== null}
+        onOpenChange={(open) => { if (!open) setShareGw(null); }}
+        accountId={selectedAccount.id}
+        gameweek={shareGw}
+        teamName={payload.teamName}
+      />
+    )}
 
     </MotionConfig>
   );
