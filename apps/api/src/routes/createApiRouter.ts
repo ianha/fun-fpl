@@ -190,6 +190,18 @@ export function createApiRouter(db: AppDatabase) {
     res.json(queryService.getGwCalendar());
   });
 
+  router.get("/my-team/:accountId/transfer-decision", (req, res) => {
+    const accountId = Number(req.params.accountId);
+    const gw = req.query.gw ? Number(req.query.gw) : undefined;
+    const horizonRaw = req.query.horizon ? Number(req.query.horizon) : 1;
+    const horizon: 1 | 3 = horizonRaw === 3 ? 3 : 1;
+    if (!accountId || !gw) {
+      res.status(400).json({ message: "accountId and gw are required" });
+      return;
+    }
+    res.json(queryService.getTransferDecision(accountId, gw, horizon));
+  });
+
   router.get("/my-team/captain-pick", (req, res) => {
     const accountId = req.query.accountId ? Number(req.query.accountId) : undefined;
     const gw = req.query.gw ? Number(req.query.gw) : undefined;

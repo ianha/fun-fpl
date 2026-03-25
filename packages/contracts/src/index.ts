@@ -273,6 +273,38 @@ export type LiveGwUpdate = {
   players: LivePlayerPoints[];
 };
 
+export type TransferDecisionTransfer = {
+  outPlayerId: number;
+  outPlayerName: string;
+  inPlayerId: number;
+  inPlayerName: string;
+  position: string;
+  priceDelta: number;
+};
+
+export type TransferDecisionOption = {
+  id: string;
+  label: "roll" | "best_1ft";
+  transfers: TransferDecisionTransfer[];
+  horizon: 1 | 3;
+  projectedGain: number;
+  nextGwGain: number;
+  hitCost: number;
+  remainingBank: number;
+  confidence: "strong" | "medium" | "close_call";
+  reasons: string[];
+  warnings: string[];
+};
+
+export type TransferDecisionResponse = {
+  gameweek: number;
+  freeTransfers: number;
+  bank: number;
+  horizon: 1 | 3;
+  recommendedOptionId: string;
+  options: TransferDecisionOption[];
+};
+
 export type GwCalendarFixture = {
   opponentShort: string;
   isHome: boolean;

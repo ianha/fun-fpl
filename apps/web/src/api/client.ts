@@ -12,6 +12,7 @@ import type {
   GameweekSummary,
   MyTeamPageResponse,
   MyTeamGameweekPicksResponse,
+  TransferDecisionResponse,
 } from "@fpl/contracts";
 import type { ChatMessage, ProviderInfo } from "@/pages/chatPageUtils";
 
@@ -144,6 +145,10 @@ export function getPlayerXpts(gw?: number) {
 
 export function getCaptainRecommendation(accountId: number, gw: number) {
   return request<CaptainRecommendation[]>(`/my-team/captain-pick?accountId=${accountId}&gw=${gw}`);
+}
+
+export function getTransferDecision(accountId: number, gw: number, horizon: 1 | 3 = 1) {
+  return request<TransferDecisionResponse>(`/my-team/${accountId}/transfer-decision?gw=${gw}&horizon=${horizon}`);
 }
 
 export function getLiveGwSnapshot(gw: number) {

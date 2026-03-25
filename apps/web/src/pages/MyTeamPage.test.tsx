@@ -115,12 +115,14 @@ const {
   getPlayerXptsMock,
   linkMyTeamAccountMock,
   syncMyTeamMock,
+  getTransferDecisionMock,
 } = vi.hoisted(() => ({
   getMyTeamMock: vi.fn(),
   getMyTeamGameweekPicksMock: vi.fn(),
   getPlayerXptsMock: vi.fn(),
   linkMyTeamAccountMock: vi.fn(),
   syncMyTeamMock: vi.fn(),
+  getTransferDecisionMock: vi.fn(),
 }));
 
 vi.mock("@/api/client", () => ({
@@ -130,6 +132,7 @@ vi.mock("@/api/client", () => ({
   linkMyTeamAccount: linkMyTeamAccountMock,
   syncMyTeam: syncMyTeamMock,
   getCaptainRecommendation: vi.fn(() => Promise.resolve([])),
+  getTransferDecision: getTransferDecisionMock,
   resolveAssetUrl: vi.fn(() => null),
   subscribeLiveGw: vi.fn(() => vi.fn()), // returns a no-op unsubscribe fn
   getLiveGwSnapshot: vi.fn(() => Promise.resolve(null)),
@@ -161,6 +164,7 @@ describe("MyTeamPage", () => {
     ]);
     linkMyTeamAccountMock.mockResolvedValue(buildPayload());
     syncMyTeamMock.mockResolvedValue(buildPayload());
+    getTransferDecisionMock.mockResolvedValue(null);
   });
 
   it("renders the native page sections inside the shared page shell", async () => {
@@ -310,5 +314,77 @@ describe("MyTeamPage", () => {
     expect(screen.getByRole("button", { name: /Relink required/i })).toBeDisabled();
     expect(screen.getByRole("button", { name: /Relink and sync/i })).toBeInTheDocument();
     expect(screen.getByLabelText(/Password/i)).toBeInTheDocument();
+  });
+
+  it("shows the Transfer Decision workspace when data is returned", async () => {
+    getTransferDecisionMock.mockResolvedValue({
+      gameweek: 7,
+      freeTransfers: 1,
+      bank: 14,
+      horizon: 1,
+      recommendedOptionId: "best_1ft",
+      options: [
+        {
+          id: "roll",
+          label: "roll",
+          transfers: [],
+          horizon: 1,
+          projectedGain: 0,
+          nextGwGain: 0,
+          hitCost: 0,
+          remainingBank: 14,
+          confidence: "medium",
+          reasons: ["Keep your free transfer and gain flexibility for next week."],
+          warnings: [],
+        },
+        {
+          id: "best_1ft",
+          label: "best_1ft",
+          transfers: [
+            {
+              outPlayerId: 1,
+              outPlayerName: "Flaherty",
+              inPlayerId: 99,
+              inPlayerName: "Saka",
+              position: "MID",
+              priceDelta: 20,
+            },
+          ],
+          horizon: 1,
+          projectedGain: 2.4,
+          nextGwGain: 2.4,
+          hitCost: 0,
+          remainingBank: 4,
+          confidence: "strong",
+          reasons: ["+2.4 xPts over 1 GW", "great next fixture"],
+          warnings: [],
+        },
+      ],
+    });
+
+    render(
+      <MemoryRouter>
+        <MyTeamPage />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText(/Transfer Decision/i)).toBeInTheDocument();
+    expect(await screen.findByText(/Best 1FT/i)).toBeInTheDocument();
+    expect(screen.getByText("Roll")).toBeInTheDocument();
+    expect(screen.getByText("Saka")).toBeInTheDocument();
+    expect(screen.getByText("Recommended")).toBeInTheDocument();
+  });
+
+  it("does not show the Transfer Decision workspace when data is null", async () => {
+    getTransferDecisionMock.mockResolvedValue(null);
+
+    render(
+      <MemoryRouter>
+        <MyTeamPage />
+      </MemoryRouter>,
+    );
+
+    await screen.findByRole("heading", { name: /Midnight Press FC/i });
+    expect(screen.queryByText(/Transfer Decision/i)).not.toBeInTheDocument();
   });
 });

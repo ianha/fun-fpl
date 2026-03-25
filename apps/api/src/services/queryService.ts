@@ -18,6 +18,8 @@ import type {
   PlayerHistoryPoint,
   PlayerXpts,
   TeamSummary,
+  TransferDecisionResponse,
+  TransferDecisionOption,
 } from "@fpl/contracts";
 import type { AppDatabase } from "../db/database.js";
 
@@ -957,6 +959,244 @@ export class QueryService {
         `${(x.minutesProbability * 100).toFixed(0)}% chance of playing`,
       ].join(" · "),
     }));
+  }
+
+  getTransferDecision(accountId: number, gameweek: number, horizon: 1 | 3): TransferDecisionResponse {
+    // Load squad data
+    type PickRow = {
+      playerId: number;
+      positionId: number;
+      positionName: string;
+      sellingPrice: number;
+      position: number;
+    };
+    const picks = this.db.prepare(`
+      SELECT mp.player_id AS playerId, p.position_id AS positionId,
+             pos.name AS positionName,
+             mp.selling_price AS sellingPrice,
+             mp.position AS position
+      FROM my_team_picks mp
+      JOIN players p ON p.id = mp.player_id
+      JOIN positions pos ON pos.id = p.position_id
+      WHERE mp.account_id = ? AND mp.gameweek_id = ?
+        AND mp.position <= 11
+    `).all(accountId, gameweek) as PickRow[];
+
+    // Load bank from history
+    type BankRow = { bank: number; freeTransfers: number };
+    const bankRow = this.db.prepare(`
+      SELECT bank, CASE
+        WHEN event_transfers = 0 THEN MIN(COALESCE(free_transfers_before, 1) + 1, 2)
+        ELSE MAX(COALESCE(free_transfers_before, 1) - event_transfers + 1, 0)
+      END AS freeTransfers
+      FROM my_team_gameweeks
+      WHERE account_id = ? AND gameweek_id = ?
+    `).get(accountId, gameweek) as BankRow | undefined;
+
+    // Fallback: derive free transfers from history count
+    type GwRow = { gameweek: number; eventTransfers: number; bank: number };
+    const historyRows = this.db.prepare(`
+      SELECT gameweek_id AS gameweek, event_transfers AS eventTransfers, bank
+      FROM my_team_gameweeks
+      WHERE account_id = ?
+      ORDER BY gameweek_id DESC
+      LIMIT 3
+    `).all(accountId) as GwRow[];
+
+    const currentGwRow = historyRows[0];
+    const bank = currentGwRow?.bank ?? bankRow?.bank ?? 0;
+    // Simple heuristic: if last GW used 0 transfers, manager has rolled 1
+    const prevGwRow = historyRows[1];
+    const rolledTransfer = prevGwRow?.eventTransfers === 0 ? 1 : 0;
+    const freeTransfers = Math.min(2, 1 + rolledTransfer);
+
+    if (picks.length === 0) {
+      return {
+        gameweek,
+        freeTransfers,
+        bank,
+        horizon,
+        recommendedOptionId: "roll",
+        options: [{
+          id: "roll",
+          label: "roll",
+          transfers: [],
+          horizon,
+          projectedGain: 0,
+          nextGwGain: 0,
+          hitCost: 0,
+          remainingBank: bank,
+          confidence: "medium",
+          reasons: ["No squad data available for this gameweek."],
+          warnings: [],
+        }],
+      };
+    }
+
+    // Get xPts for GW and GW+1 (for 3-GW horizon, approximate using available data)
+    const xptsGw1 = this.getPlayerXpts(gameweek);
+    const xptsGw2 = horizon >= 3 ? this.getPlayerXpts(gameweek + 1) : [];
+    const xptsGw3 = horizon >= 3 ? this.getPlayerXpts(gameweek + 2) : [];
+
+    const xptsMapGw1 = new Map(xptsGw1.map((x) => [x.playerId, x]));
+    const xptsMapGw2 = new Map(xptsGw2.map((x) => [x.playerId, x]));
+    const xptsMapGw3 = new Map(xptsGw3.map((x) => [x.playerId, x]));
+
+    // Horizon weights
+    const weights = horizon === 1
+      ? [1.0, 0, 0]
+      : [0.55, 0.30, 0.15];
+
+    function horizonXpts(playerId: number): number {
+      const g1 = xptsMapGw1.get(playerId)?.xpts ?? 0;
+      const g2 = xptsMapGw2.get(playerId)?.xpts ?? 0;
+      const g3 = xptsMapGw3.get(playerId)?.xpts ?? 0;
+      return g1 * weights[0] + g2 * weights[1] + g3 * weights[2];
+    }
+
+    // Score each squad player
+    type ScoredPick = PickRow & { horizonScore: number; nextGwXpts: number; webName: string };
+    const scoredPicks: ScoredPick[] = picks.map((p) => ({
+      ...p,
+      horizonScore: horizonXpts(p.playerId),
+      nextGwXpts: xptsMapGw1.get(p.playerId)?.xpts ?? 0,
+      webName: (xptsMapGw1.get(p.playerId)?.playerName) ??
+               (xptsMapGw2.get(p.playerId)?.playerName) ??
+               String(p.playerId),
+    }));
+
+    // Find weakest link (lowest horizon score among starters)
+    const weakestPick = scoredPicks.reduce((min, p) =>
+      p.horizonScore < min.horizonScore ? p : min
+    );
+
+    // Roll baseline
+    const rollOption: TransferDecisionOption = {
+      id: "roll",
+      label: "roll",
+      transfers: [],
+      horizon,
+      projectedGain: 0,
+      nextGwGain: 0,
+      hitCost: 0,
+      remainingBank: bank,
+      confidence: "medium",
+      reasons: ["Keep your free transfer and gain flexibility for next week."],
+      warnings: [],
+    };
+
+    // Find affordable same-position replacements for the weakest link
+    type CandidateRow = {
+      id: number;
+      webName: string;
+      nowCost: number;
+      positionId: number;
+      positionName: string;
+      status: string;
+    };
+    const budget = bank + weakestPick.sellingPrice;
+    const candidates = this.db.prepare(`
+      SELECT p.id, p.web_name AS webName, p.now_cost AS nowCost,
+             p.position_id AS positionId, pos.name AS positionName,
+             p.status
+      FROM players p
+      JOIN positions pos ON pos.id = p.position_id
+      WHERE p.position_id = ?
+        AND p.now_cost <= ?
+        AND p.id NOT IN (SELECT player_id FROM my_team_picks WHERE account_id = ? AND gameweek_id = ?)
+        AND p.status != 'u'
+      ORDER BY p.now_cost DESC
+      LIMIT 50
+    `).all(weakestPick.positionId, budget, accountId, gameweek) as CandidateRow[];
+
+    // Score candidates and find best
+    type ScoredCandidate = CandidateRow & { horizonScore: number; nextGwXpts: number };
+    const scoredCandidates: ScoredCandidate[] = candidates.map((c) => ({
+      ...c,
+      horizonScore: horizonXpts(c.id),
+      nextGwXpts: xptsMapGw1.get(c.id)?.xpts ?? 0,
+    }));
+
+    scoredCandidates.sort((a, b) => b.horizonScore - a.horizonScore);
+    const best = scoredCandidates[0];
+
+    const options: TransferDecisionOption[] = [rollOption];
+
+    if (best) {
+      const projectedGain = best.horizonScore - weakestPick.horizonScore;
+      const nextGwGain = best.nextGwXpts - weakestPick.nextGwXpts;
+      const remainingBank = bank + weakestPick.sellingPrice - best.nowCost;
+      const priceDelta = best.nowCost - weakestPick.sellingPrice;
+
+      // Determine confidence
+      const confidence: TransferDecisionOption["confidence"] =
+        projectedGain >= 2.0 ? "strong" :
+        projectedGain >= 0.5 ? "medium" : "close_call";
+
+      const reasons: string[] = [
+        `+${projectedGain.toFixed(1)} xPts over ${horizon} GW${horizon > 1 ? "s" : ""}`,
+      ];
+      const gw1Data = xptsMapGw1.get(best.id);
+      if (gw1Data) {
+        reasons.push(gw1Data.difficulty <= 2 ? "great next fixture" : gw1Data.difficulty >= 4 ? "tough but form justified" : "decent next fixture");
+      }
+
+      const warnings: string[] = [];
+      if (projectedGain < 0.5) {
+        warnings.push("Gain is marginal — rolling may preserve more flexibility.");
+      }
+      const inPlayerXpts = xptsMapGw1.get(best.id);
+      if (inPlayerXpts && inPlayerXpts.minutesProbability < 0.7) {
+        warnings.push("Minutes risk: incoming player may not start.");
+      }
+
+      const best1ftOption: TransferDecisionOption = {
+        id: "best_1ft",
+        label: "best_1ft",
+        transfers: [{
+          outPlayerId: weakestPick.playerId,
+          outPlayerName: weakestPick.webName,
+          inPlayerId: best.id,
+          inPlayerName: best.webName,
+          position: weakestPick.positionName,
+          priceDelta,
+        }],
+        horizon,
+        projectedGain,
+        nextGwGain,
+        hitCost: 0,
+        remainingBank,
+        confidence,
+        reasons,
+        warnings,
+      };
+      options.push(best1ftOption);
+
+      // Update roll reasons based on comparison
+      if (projectedGain >= 2.0) {
+        rollOption.reasons = [`Best 1FT gains +${projectedGain.toFixed(1)} xPts — rolling costs you this edge.`];
+        rollOption.warnings = ["Rolling is the weaker option this week."];
+      } else if (projectedGain >= 0.5) {
+        rollOption.reasons = ["A modest gain is available, but rolling keeps your options open for next week."];
+      } else {
+        rollOption.confidence = "strong";
+        rollOption.reasons = ["No clear upgrade available. Rolling is the right call."];
+      }
+    }
+
+    // Recommended option: best_1ft if gain >= 1.0, else roll
+    const best1ft = options.find((o) => o.label === "best_1ft");
+    const recommendedOptionId =
+      best1ft && best1ft.projectedGain >= 1.0 ? "best_1ft" : "roll";
+
+    return {
+      gameweek,
+      freeTransfers,
+      bank,
+      horizon,
+      recommendedOptionId,
+      options,
+    };
   }
 
   getGwCalendar(): GwCalendarRow[] {

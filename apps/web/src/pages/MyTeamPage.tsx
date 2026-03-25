@@ -2,8 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { motion, MotionConfig, useMotionValue, useMotionTemplate, animate } from "framer-motion";
 import { ArrowRightLeft, ChevronLeft, ChevronRight, Coins, Crown, ExternalLink, Share2, ShieldAlert, Sparkles, Trophy, Zap } from "lucide-react";
-import type { CaptainRecommendation, LiveGwUpdate, MyTeamGameweekPicksResponse, MyTeamPageResponse, MyTeamPick, PlayerDetail, PlayerXpts } from "@fpl/contracts";
-import { getCaptainRecommendation, getMyTeam, getMyTeamGameweekPicks, getPlayer, getPlayerXpts, linkMyTeamAccount, resolveAssetUrl, subscribeLiveGw, syncMyTeam } from "@/api/client";
+import type { CaptainRecommendation, LiveGwUpdate, MyTeamGameweekPicksResponse, MyTeamPageResponse, MyTeamPick, PlayerDetail, PlayerXpts, TransferDecisionResponse } from "@fpl/contracts";
+import { getCaptainRecommendation, getMyTeam, getMyTeamGameweekPicks, getPlayer, getPlayerXpts, getTransferDecision, linkMyTeamAccount, resolveAssetUrl, subscribeLiveGw, syncMyTeam } from "@/api/client";
 import { BGPattern, GlowCard } from "@/components/ui/glow-card";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -305,6 +305,8 @@ export function MyTeamPage() {
   const [historicalLoading, setHistoricalLoading] = useState(false);
   const [liveData, setLiveData] = useState<LiveGwUpdate | null>(null);
   const [captainRecs, setCaptainRecs] = useState<CaptainRecommendation[]>([]);
+  const [transferDecision, setTransferDecision] = useState<TransferDecisionResponse | null>(null);
+  const [transferHorizon, setTransferHorizon] = useState<1 | 3>(1);
   const [pitchOverlayMode, setPitchOverlayMode] = useState<PitchOverlayMode>("normal");
   const [playerXpts, setPlayerXpts] = useState<PlayerXpts[]>([]);
   const [selectedPick, setSelectedPick] = useState<{ pick: MyTeamPick; gwPoints: number } | null>(null);
@@ -558,6 +560,17 @@ export function MyTeamPage() {
       .then(setCaptainRecs)
       .catch(() => {});
   }, [selectedAccount?.id, payload?.currentGameweek]);
+
+  // Fetch transfer decision whenever account, GW, or horizon changes
+  useEffect(() => {
+    const accountId = selectedAccount?.id;
+    const gw = payload?.currentGameweek;
+    if (!accountId || !gw) return;
+    setTransferDecision(null);
+    getTransferDecision(accountId, gw, transferHorizon)
+      .then(setTransferDecision)
+      .catch(() => {});
+  }, [selectedAccount?.id, payload?.currentGameweek, transferHorizon]);
   const relinkMessage = summarizeAuthError(selectedAccount?.authError ?? null);
 
   if (state.status === "loading") {
@@ -1071,6 +1084,133 @@ export function MyTeamPage() {
             </GlowCard>
           </motion.div>
         </div>
+
+        {/* ── TRANSFER DECISION WORKSPACE ───────────────────────────── */}
+        {transferDecision && (
+          <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.12, duration: 0.4 }}>
+            <GlowCard className="p-4 sm:p-5" glowColor="teal">
+              {/* Header row */}
+              <div className="mb-3 flex flex-wrap items-center gap-2">
+                <ArrowRightLeft className="h-4 w-4 text-accent" />
+                <span className="text-sm font-semibold text-white/80">Transfer Decision</span>
+                <span className="text-xs text-white/40">GW{transferDecision.gameweek}</span>
+                <span className="text-xs text-white/30">·</span>
+                <span className="text-xs text-white/40">{transferDecision.freeTransfers} free transfer{transferDecision.freeTransfers !== 1 ? "s" : ""}</span>
+                <span className="text-xs text-white/30">·</span>
+                <span className="text-xs text-white/40">Bank {formatCost(transferDecision.bank)}</span>
+                {/* Horizon selector */}
+                <div className="ml-auto flex items-center gap-1 rounded-lg border border-white/10 bg-white/5 p-0.5">
+                  <button
+                    type="button"
+                    onClick={() => setTransferHorizon(1)}
+                    className={cn(
+                      "rounded px-2.5 py-1 text-[11px] font-semibold transition-colors",
+                      transferHorizon === 1 ? "bg-accent/20 text-accent" : "text-white/40 hover:text-white/60",
+                    )}
+                  >
+                    1 GW
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setTransferHorizon(3)}
+                    className={cn(
+                      "rounded px-2.5 py-1 text-[11px] font-semibold transition-colors",
+                      transferHorizon === 3 ? "bg-accent/20 text-accent" : "text-white/40 hover:text-white/60",
+                    )}
+                  >
+                    3 GWs
+                  </button>
+                </div>
+              </div>
+
+              {/* Decision cards */}
+              <div className="flex flex-col gap-2 sm:flex-row">
+                {transferDecision.options.map((option) => {
+                  const isRecommended = option.id === transferDecision.recommendedOptionId;
+                  const transfer = option.transfers[0];
+                  return (
+                    <div
+                      key={option.id}
+                      className={cn(
+                        "flex-1 rounded-xl border p-3 transition-colors",
+                        isRecommended
+                          ? "border-accent/30 bg-accent/8"
+                          : "border-white/8 bg-white/4",
+                      )}
+                    >
+                      {/* Card header */}
+                      <div className="mb-2 flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-1.5">
+                          <span className={cn(
+                            "text-xs font-bold uppercase tracking-wide",
+                            isRecommended ? "text-accent" : "text-white/50",
+                          )}>
+                            {option.label === "roll" ? "Roll" : "Best 1FT"}
+                          </span>
+                          {isRecommended && (
+                            <span className="rounded bg-accent/20 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-accent">
+                              Recommended
+                            </span>
+                          )}
+                        </div>
+                        <span className={cn(
+                          "rounded px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide",
+                          option.confidence === "strong" ? "bg-emerald-500/20 text-emerald-300" :
+                          option.confidence === "medium" ? "bg-sky-500/20 text-sky-300" :
+                          "bg-amber-500/20 text-amber-300",
+                        )}>
+                          {option.confidence === "close_call" ? "Close call" : option.confidence}
+                        </span>
+                      </div>
+
+                      {/* Transfer info */}
+                      {transfer ? (
+                        <div className="mb-2 flex items-center gap-1.5 text-xs text-white/70">
+                          <span className="text-white/40">{transfer.outPlayerName}</span>
+                          <span className="text-white/25">→</span>
+                          <span className="font-semibold text-white">{transfer.inPlayerName}</span>
+                          <span className="text-white/35 ml-auto text-[10px]">{transfer.position}</span>
+                        </div>
+                      ) : (
+                        <div className="mb-2 text-xs text-white/35 italic">No transfer</div>
+                      )}
+
+                      {/* Stats row */}
+                      <div className="mb-2 flex items-center gap-3">
+                        {option.projectedGain !== 0 && (
+                          <div className="text-center">
+                            <p className={cn(
+                              "font-display text-base font-bold tabular-nums",
+                              option.projectedGain >= 1 ? "text-emerald-300" :
+                              option.projectedGain > 0 ? "text-white/60" : "text-white/40",
+                            )}>
+                              {option.projectedGain >= 0 ? "+" : ""}{option.projectedGain.toFixed(1)}
+                            </p>
+                            <p className="text-[9px] text-white/30">xPts gain</p>
+                          </div>
+                        )}
+                        <div className="text-center">
+                          <p className="font-display text-sm font-bold tabular-nums text-white/60">{formatCost(option.remainingBank)}</p>
+                          <p className="text-[9px] text-white/30">bank after</p>
+                        </div>
+                      </div>
+
+                      {/* Reasons */}
+                      <ul className="space-y-0.5">
+                        {option.reasons.map((r, i) => (
+                          <li key={i} className="text-[11px] leading-relaxed text-white/50">{r}</li>
+                        ))}
+                        {option.warnings.map((w, i) => (
+                          <li key={`w-${i}`} className="text-[11px] leading-relaxed text-amber-300/70">⚠ {w}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  );
+                })}
+              </div>
+            </GlowCard>
+          </motion.div>
+        )}
 
         {/* ── HISTORY GRID: 3 columns ───────────────────────────────── */}
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
