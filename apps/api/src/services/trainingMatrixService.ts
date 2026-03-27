@@ -76,13 +76,13 @@ export class TrainingMatrixService {
            target_match.total_points AS actualPoints,
            AVG(past_matches.minutes) AS rollingMinutes,
            AVG(past_matches.starts) AS rollingStarts,
-           AVG(past_matches.expected_goals) AS rollingXg,
-           AVG(past_matches.expected_assists) AS rollingXa,
-           AVG(past_matches.expected_goals_conceded) AS rollingXgc,
-           AVG(past_matches.bps) AS rollingBps,
-           AVG(past_matches.bonus) AS rollingBonus,
-           AVG(past_matches.clean_sheets) AS rollingCs,
-           AVG(past_matches.saves) AS rollingSaves,
+           (SUM(past_matches.expected_goals) * 90.0) / NULLIF(SUM(past_matches.minutes), 0) AS rollingXg,
+           (SUM(past_matches.expected_assists) * 90.0) / NULLIF(SUM(past_matches.minutes), 0) AS rollingXa,
+           (SUM(past_matches.expected_goals_conceded) * 90.0) / NULLIF(SUM(past_matches.minutes), 0) AS rollingXgc,
+           (SUM(past_matches.bps) * 90.0) / NULLIF(SUM(past_matches.minutes), 0) AS rollingBps,
+           (SUM(past_matches.bonus) * 90.0) / NULLIF(SUM(past_matches.minutes), 0) AS rollingBonus,
+           (SUM(past_matches.clean_sheets) * 90.0) / NULLIF(SUM(past_matches.minutes), 0) AS rollingCs,
+           (SUM(past_matches.saves) * 90.0) / NULLIF(SUM(past_matches.minutes), 0) AS rollingSaves,
            COUNT(past_matches.kickoff_time) AS matchesInLookback
          FROM player_history target_match
          JOIN players p

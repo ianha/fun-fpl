@@ -90,9 +90,9 @@ describe("TrainingMatrixService", () => {
       matchesInLookback: 2,
     });
     expect(rows[0]?.rollingMinutes).toBeCloseTo(85);
-    expect(rows[0]?.rollingXg).toBeCloseTo(0.4);
-    expect(rows[0]?.rollingXa).toBeCloseTo(0.15);
-    expect(rows[0]?.rollingBps).toBeCloseTo(25);
+    expect(rows[0]?.rollingXg).toBeCloseTo(0.80 * 90 / 170);
+    expect(rows[0]?.rollingXa).toBeCloseTo(0.30 * 90 / 170);
+    expect(rows[0]?.rollingBps).toBeCloseTo(50 * 90 / 170);
   });
 
   it("keeps separate target rows for double-gameweek fixtures", () => {
@@ -112,6 +112,61 @@ describe("TrainingMatrixService", () => {
     ]);
     expect(rows[0]?.rollingMinutes).toBe(rows[1]?.rollingMinutes);
     expect(rows[0]?.matchesInLookback).toBe(rows[1]?.matchesInLookback);
+  });
+
+  it("downweights cameo appearances in rolling stats via minute-weighted per-90 aggregation", () => {
+    const db = createDatabase(path.join(tempDir, "cameo-bias.sqlite"));
+    seedPublicData(db);
+
+    db.prepare(
+      `INSERT INTO teams (id, code, name, short_name, strength, updated_at) VALUES
+        (3, 43, 'Chelsea', 'CHE', 4, ?)`,
+    ).run(now());
+
+    const insertHistory = db.prepare(
+      `INSERT INTO player_history (
+        player_id, round, total_points, minutes, goals_scored, assists, clean_sheets, bonus, bps, creativity,
+        influence, threat, ict_index, expected_goals, expected_assists, expected_goal_involvements,
+        expected_goal_performance, expected_assist_performance, expected_goal_involvement_performance,
+        expected_goals_conceded, tackles, recoveries, clearances_blocks_interceptions, defensive_contribution,
+        saves, yellow_cards, red_cards, own_goals, penalties_saved, penalties_missed, goals_conceded, starts,
+        opponent_team, team_id, value, was_home, kickoff_time, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    );
+
+    // GW 5: Full 90 min start, low xG (0.10)
+    insertHistory.run(
+      10, 5, 6, 90, 0, 0, 0, 0, 10, 5,
+      5, 5, 2, 0.10, 0.05, 0.15, 0, 0, 0, 1.00, 1, 3, 1, 2,
+      0, 0, 0, 0, 0, 0, 1, 1, 2, 1, 104, 1, "2026-03-10T15:00:00.000Z", now(),
+    );
+    // GW 6: 5-min cameo, inflated xG (0.50)
+    insertHistory.run(
+      10, 6, 1, 5, 0, 0, 0, 0, 2, 1,
+      1, 1, 0, 0.50, 0.30, 0.80, 0, 0, 0, 0.20, 0, 0, 0, 0,
+      0, 0, 0, 0, 0, 0, 0, 0, 3, 1, 105, 0, "2026-03-17T15:00:00.000Z", now(),
+    );
+
+    // GW 7: target match
+    insertHistory.run(
+      10, 7, 8, 90, 1, 0, 0, 2, 25, 12,
+      15, 18, 5, 0.70, 0.10, 0.80, 0, 0, 0, 0.80, 1, 3, 1, 2,
+      0, 0, 0, 0, 0, 0, 1, 1, 2, 1, 106, 1, "2026-03-24T15:00:00.000Z", now(),
+    );
+
+    const service = new TrainingMatrixService(db);
+    const rows = service.getTrainingMatrix({ targetGameweek: 7, lookbackWindow: 2 });
+
+    expect(rows).toHaveLength(1);
+    // Per-90 minute-weighted: SUM(xG) * 90 / SUM(minutes) = (0.10 + 0.50) * 90 / (90 + 5) ≈ 0.568
+    // Plain AVG would give (0.10 + 0.50) / 2 = 0.30 — cameo inflates it
+    // Per-90 correctly reflects that most minutes had low xG
+    expect(rows[0]?.rollingXg).toBeCloseTo((0.60 * 90) / 95);
+    // Verify the cameo does NOT dominate: the value should be closer to the full-match rate
+    // 0.10 per-90 for the full match vs 0.568 blended — much closer to the starter's rate than plain AVG 0.30
+    expect(rows[0]?.rollingXg).toBeGreaterThan(0.5);
+    // rollingMinutes is still plain AVG (not minute-weighted), reflecting actual match participation
+    expect(rows[0]?.rollingMinutes).toBeCloseTo(47.5);
   });
 
   it("excludes target rows when there is no historical lookback sample", () => {
