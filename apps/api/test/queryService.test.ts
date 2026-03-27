@@ -227,6 +227,115 @@ function seedHistoricalSellValueFallbackScenario(db: ReturnType<typeof createDat
   insertPick.run(1, 8, 210, 5, 1, 0, 0, null, null);
 }
 
+function seedHistoricalLowMinuteOutlierScenario(db: ReturnType<typeof createDatabase>) {
+  seedPublicData(db);
+
+  db.prepare(
+    `INSERT INTO teams (id, code, name, short_name, strength, updated_at) VALUES
+      (4, 31, 'Bournemouth', 'BOU', 3, ?),
+      (5, 11, 'Brentford', 'BRE', 3, ?),
+      (9, 39, 'Everton', 'EVE', 3, ?),
+      (16, 90, 'Burnley', 'BUR', 3, ?)`,
+  ).run(now(), now(), now(), now());
+
+  const insertPlayer = db.prepare(
+    `INSERT INTO players (
+      id, code, web_name, first_name, second_name, team_id, position_id, now_cost, total_points,
+      form, selected_by_percent, points_per_game, goals_scored, assists, clean_sheets, minutes,
+      bonus, bps, creativity, influence, threat, ict_index, expected_goals, expected_assists,
+      expected_goal_involvements, expected_goal_performance, expected_assist_performance,
+      expected_goal_involvement_performance, expected_goals_conceded, clean_sheets_per_90, starts,
+      tackles, recoveries, defensive_contribution, photo, team_code, status, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  );
+
+  insertPlayer.run(136, 10136, "Thiago", "Thiago", "Rodrigues", 5, 4, 73, 130, 4.5, 2.3, 4.1, 11, 2, 0, 2652, 19, 300, 120, 340, 690, 115, 17.54, 1.66, 19.20, 0, 0, 0, 40.94, 0, 30, 9, 61, 10, "10136.jpg", 11, "a", now());
+  insertPlayer.run(311, 10311, "Beto", "Beto", "Betuncal", 9, 4, 50, 82, 7.2, 4.2, 3.8, 6, 0, 0, 1196, 9, 210, 60, 220, 580, 96, 7.16, 0.21, 7.37, 0, 0, 0, 18.32, 0, 12, 5, 33, 7, "10311.jpg", 39, "a", now());
+
+  db.prepare(
+    `INSERT INTO gameweeks (id, name, deadline_time, average_entry_score, highest_score, is_current, is_finished, updated_at)
+     VALUES (29, 'Gameweek 29', ?, 55, 104, 0, 1, ?),
+            (30, 'Gameweek 30', ?, 55, 104, 1, 0, ?)`,
+  ).run(
+    "2026-03-01T10:00:00.000Z", now(),
+    "2026-03-08T10:00:00.000Z", now(),
+  );
+
+  const insertFixture = db.prepare(
+    `INSERT INTO fixtures (id, code, event_id, kickoff_time, team_h, team_a, team_h_score, team_a_score, finished, started, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  );
+  insertFixture.run(2901, 12901, 29, "2026-03-03T19:30:00.000Z", 4, 5, 0, 0, 1, 1, now());
+  insertFixture.run(2902, 12902, 29, "2026-03-03T19:30:00.000Z", 9, 16, 2, 0, 1, 1, now());
+  insertFixture.run(3001, 13001, 30, "2026-03-10T19:30:00.000Z", 5, 4, null, null, 0, 0, now());
+  insertFixture.run(3002, 13002, 30, "2026-03-10T19:30:00.000Z", 16, 9, null, null, 0, 0, now());
+
+  const insertHistory = db.prepare(
+    `INSERT INTO player_history (
+      player_id, round, total_points, minutes, goals_scored, assists, clean_sheets, bonus, bps, creativity,
+      influence, threat, ict_index, expected_goals, expected_assists, expected_goal_involvements,
+      expected_goal_performance, expected_assist_performance, expected_goal_involvement_performance,
+      expected_goals_conceded, tackles, recoveries, clearances_blocks_interceptions, defensive_contribution,
+      saves, yellow_cards, red_cards, own_goals, penalties_saved, penalties_missed, goals_conceded, starts,
+      opponent_team, team_id, value, was_home, kickoff_time, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  );
+
+  const thiagoRounds = [
+    { round: 24, xg: 0.00, xa: 0.00, xgc: 2.40, bonus: 0, yc: 0, gc: 0, minutes: 90 },
+    { round: 25, xg: 0.79, xa: 0.04, xgc: 2.24, bonus: 0, yc: 1, gc: 2, minutes: 90 },
+    { round: 26, xg: 0.77, xa: 0.22, xgc: 0.60, bonus: 0, yc: 0, gc: 1, minutes: 90 },
+    { round: 27, xg: 0.31, xa: 0.43, xgc: 1.09, bonus: 0, yc: 0, gc: 2, minutes: 90 },
+    { round: 28, xg: 0.58, xa: 0.03, xgc: 0.97, bonus: 1, yc: 1, gc: 3, minutes: 90 },
+  ];
+  for (const item of thiagoRounds) {
+    insertHistory.run(
+      136, item.round, 4, item.minutes, 0, 0, 0, item.bonus, 18, 10,
+      22, 30, 6, item.xg, item.xa, item.xg + item.xa, 0, 0, 0, item.xgc, 1, 3, 1, 2,
+      0, item.yc, 0, 0, 0, 0, item.gc, 1, 4, 5, 71, 0, `2026-02-${item.round.toString().padStart(2, "0")}T15:00:00.000Z`, now(),
+    );
+  }
+
+  const betoRounds = [
+    { round: 24, minutes: 1, starts: 0, xg: 0.59, xa: 0.00, bonus: 2, gc: 0, yc: 0 },
+    { round: 25, minutes: 21, starts: 0, xg: 0.00, xa: 0.00, bonus: 0, gc: 0, yc: 0 },
+    { round: 26, minutes: 28, starts: 0, xg: 0.10, xa: 0.01, bonus: 0, gc: 1, yc: 1 },
+    { round: 27, minutes: 11, starts: 0, xg: 0.00, xa: 0.00, bonus: 0, gc: 0, yc: 0 },
+    { round: 28, minutes: 73, starts: 1, xg: 1.02, xa: 0.01, bonus: 3, gc: 1, yc: 0 },
+  ];
+  for (const item of betoRounds) {
+    insertHistory.run(
+      311, item.round, 5, item.minutes, 0, 0, 0, item.bonus, 15, 8,
+      20, 40, 5, item.xg, item.xa, item.xg + item.xa, 0, 0, 0, 1.05, 0, 2, 0, 1,
+      0, item.yc, 0, 0, 0, 0, item.gc, item.starts, 16, 9, 50, 1, `2026-02-${item.round.toString().padStart(2, "0")}T15:00:00.000Z`, now(),
+    );
+  }
+
+  db.prepare(
+    `INSERT INTO my_team_accounts (
+      id, email, encrypted_credentials, manager_id, entry_id, player_first_name, player_last_name, team_name,
+      auth_status, last_authenticated_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).run(1, "ian@fpl.local", "encrypted", 77, 321, "Ian", "Harper", "Midnight Press FC", "authenticated", now(), now());
+
+  db.prepare(
+    `INSERT INTO my_team_gameweeks (
+      account_id, gameweek_id, points, total_points, overall_rank, rank, bank, value, event_transfers,
+      event_transfers_cost, points_on_bench, active_chip
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?),
+             (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).run(
+    1, 29, 62, 1680, 101000, 101000, 71, 1035, 0, 0, 7, null,
+    1, 30, 62, 1742, 98000, 98000, 71, 1038, 0, 0, 5, null,
+  );
+
+  db.prepare(
+    `INSERT INTO my_team_picks (
+      account_id, gameweek_id, player_id, position, multiplier, is_captain, is_vice_captain, selling_price, purchase_price
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).run(1, 29, 136, 10, 1, 0, 0, 71, 73);
+}
+
 function seedTransferDecisionHeuristicScenario(
   db: ReturnType<typeof createDatabase>,
   mode: "upside_bias" | "roll_bias",
@@ -863,5 +972,19 @@ describe("QueryService", () => {
       inPlayerId: 212,
     });
     expect(bestOption?.transfers[0]?.inPlayerId).not.toBe(213);
+  });
+
+  it("does not let one-minute historical cameo outliers explode replay xPts", () => {
+    const db = createDatabase(path.join(tempDir, "historical-low-minute-outlier.sqlite"));
+    seedHistoricalLowMinuteOutlierScenario(db);
+
+    const queryService = new QueryService(db);
+    const decision = queryService.getTransferDecision(1, { gw: 29, horizon: 1 });
+    const bestOption = decision?.options.find((option) => option.label === "best_1ft");
+
+    expect(decision).not.toBeNull();
+    expect(bestOption?.projectedGain ?? 0).toBeLessThan(8);
+    expect(bestOption?.nextGwGain ?? 0).toBeLessThan(8);
+    expect(decision?.recommendedOptionId).toBe("roll");
   });
 });

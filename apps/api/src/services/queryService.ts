@@ -2069,25 +2069,33 @@ export class QueryService {
     const rows = this.db.prepare(
       `SELECT
          ph.player_id AS playerId,
-         AVG(CASE WHEN recent.round IS NOT NULL AND ph.minutes > 0 THEN ph.expected_goals * 90.0 / ph.minutes END) AS recentXg90,
-         AVG(CASE WHEN recent.round IS NOT NULL AND ph.minutes > 0 THEN ph.expected_assists * 90.0 / ph.minutes END) AS recentXa90,
-         AVG(CASE WHEN recent.round IS NOT NULL AND ph.minutes > 0 THEN ph.expected_goals_conceded * 90.0 / ph.minutes END) AS recentXgc90,
-         AVG(CASE WHEN recent.round IS NOT NULL AND ph.minutes > 0 THEN ph.bonus * 90.0 / ph.minutes END) AS recentBonus90,
-         AVG(CASE WHEN recent.round IS NOT NULL AND ph.minutes > 0 THEN ph.saves * 90.0 / ph.minutes END) AS recentSaves90,
-         AVG(CASE WHEN recent.round IS NOT NULL AND ph.minutes > 0 THEN ph.yellow_cards * 90.0 / ph.minutes END) AS recentYellow90,
-         AVG(CASE WHEN recent.round IS NOT NULL AND ph.minutes > 0 THEN ph.red_cards * 90.0 / ph.minutes END) AS recentRed90,
-         AVG(CASE WHEN recent.round IS NOT NULL AND ph.minutes > 0 THEN ph.goals_conceded * 90.0 / ph.minutes END) AS recentGoalsConceded90,
+         (SUM(CASE WHEN recent.round IS NOT NULL THEN ph.expected_goals ELSE 0 END) * 90.0) /
+           NULLIF(SUM(CASE WHEN recent.round IS NOT NULL THEN ph.minutes ELSE 0 END), 0) AS recentXg90,
+         (SUM(CASE WHEN recent.round IS NOT NULL THEN ph.expected_assists ELSE 0 END) * 90.0) /
+           NULLIF(SUM(CASE WHEN recent.round IS NOT NULL THEN ph.minutes ELSE 0 END), 0) AS recentXa90,
+         (SUM(CASE WHEN recent.round IS NOT NULL THEN ph.expected_goals_conceded ELSE 0 END) * 90.0) /
+           NULLIF(SUM(CASE WHEN recent.round IS NOT NULL THEN ph.minutes ELSE 0 END), 0) AS recentXgc90,
+         (SUM(CASE WHEN recent.round IS NOT NULL THEN ph.bonus ELSE 0 END) * 90.0) /
+           NULLIF(SUM(CASE WHEN recent.round IS NOT NULL THEN ph.minutes ELSE 0 END), 0) AS recentBonus90,
+         (SUM(CASE WHEN recent.round IS NOT NULL THEN ph.saves ELSE 0 END) * 90.0) /
+           NULLIF(SUM(CASE WHEN recent.round IS NOT NULL THEN ph.minutes ELSE 0 END), 0) AS recentSaves90,
+         (SUM(CASE WHEN recent.round IS NOT NULL THEN ph.yellow_cards ELSE 0 END) * 90.0) /
+           NULLIF(SUM(CASE WHEN recent.round IS NOT NULL THEN ph.minutes ELSE 0 END), 0) AS recentYellow90,
+         (SUM(CASE WHEN recent.round IS NOT NULL THEN ph.red_cards ELSE 0 END) * 90.0) /
+           NULLIF(SUM(CASE WHEN recent.round IS NOT NULL THEN ph.minutes ELSE 0 END), 0) AS recentRed90,
+         (SUM(CASE WHEN recent.round IS NOT NULL THEN ph.goals_conceded ELSE 0 END) * 90.0) /
+           NULLIF(SUM(CASE WHEN recent.round IS NOT NULL THEN ph.minutes ELSE 0 END), 0) AS recentGoalsConceded90,
          AVG(CASE WHEN recent.round IS NOT NULL THEN ph.minutes END) AS recentAvgMinutes,
          AVG(CASE WHEN recent.round IS NOT NULL THEN CASE WHEN ph.starts > 0 THEN 1.0 ELSE 0 END END) AS recentStartProbability,
          SUM(CASE WHEN recent.round IS NOT NULL THEN 1 ELSE 0 END) AS recentGwCount,
-         AVG(CASE WHEN ph.minutes > 0 THEN ph.expected_goals * 90.0 / ph.minutes END) AS seasonXg90,
-         AVG(CASE WHEN ph.minutes > 0 THEN ph.expected_assists * 90.0 / ph.minutes END) AS seasonXa90,
-         AVG(CASE WHEN ph.minutes > 0 THEN ph.expected_goals_conceded * 90.0 / ph.minutes END) AS seasonXgc90,
-         AVG(CASE WHEN ph.minutes > 0 THEN ph.bonus * 90.0 / ph.minutes END) AS seasonBonus90,
-         AVG(CASE WHEN ph.minutes > 0 THEN ph.saves * 90.0 / ph.minutes END) AS seasonSaves90,
-         AVG(CASE WHEN ph.minutes > 0 THEN ph.yellow_cards * 90.0 / ph.minutes END) AS seasonYellow90,
-         AVG(CASE WHEN ph.minutes > 0 THEN ph.red_cards * 90.0 / ph.minutes END) AS seasonRed90,
-         AVG(CASE WHEN ph.minutes > 0 THEN ph.goals_conceded * 90.0 / ph.minutes END) AS seasonGoalsConceded90,
+         (SUM(ph.expected_goals) * 90.0) / NULLIF(SUM(ph.minutes), 0) AS seasonXg90,
+         (SUM(ph.expected_assists) * 90.0) / NULLIF(SUM(ph.minutes), 0) AS seasonXa90,
+         (SUM(ph.expected_goals_conceded) * 90.0) / NULLIF(SUM(ph.minutes), 0) AS seasonXgc90,
+         (SUM(ph.bonus) * 90.0) / NULLIF(SUM(ph.minutes), 0) AS seasonBonus90,
+         (SUM(ph.saves) * 90.0) / NULLIF(SUM(ph.minutes), 0) AS seasonSaves90,
+         (SUM(ph.yellow_cards) * 90.0) / NULLIF(SUM(ph.minutes), 0) AS seasonYellow90,
+         (SUM(ph.red_cards) * 90.0) / NULLIF(SUM(ph.minutes), 0) AS seasonRed90,
+         (SUM(ph.goals_conceded) * 90.0) / NULLIF(SUM(ph.minutes), 0) AS seasonGoalsConceded90,
          AVG(ph.minutes) AS seasonAvgMinutes,
          AVG(CASE WHEN ph.starts > 0 THEN 1.0 ELSE 0 END) AS seasonStartProbability,
          COUNT(*) AS seasonGwCount
@@ -2111,14 +2119,14 @@ export class QueryService {
     const rows = this.db.prepare(
       `SELECT
          p.position_id AS positionId,
-         AVG(CASE WHEN ph.minutes > 0 THEN ph.expected_goals * 90.0 / ph.minutes END) AS xg90,
-         AVG(CASE WHEN ph.minutes > 0 THEN ph.expected_assists * 90.0 / ph.minutes END) AS xa90,
-         AVG(CASE WHEN ph.minutes > 0 THEN ph.expected_goals_conceded * 90.0 / ph.minutes END) AS xgc90,
-         AVG(CASE WHEN ph.minutes > 0 THEN ph.bonus * 90.0 / ph.minutes END) AS bonus90,
-         AVG(CASE WHEN ph.minutes > 0 THEN ph.saves * 90.0 / ph.minutes END) AS saves90,
-         AVG(CASE WHEN ph.minutes > 0 THEN ph.yellow_cards * 90.0 / ph.minutes END) AS yellow90,
-         AVG(CASE WHEN ph.minutes > 0 THEN ph.red_cards * 90.0 / ph.minutes END) AS red90,
-         AVG(CASE WHEN ph.minutes > 0 THEN ph.goals_conceded * 90.0 / ph.minutes END) AS goalsConceded90,
+         (SUM(ph.expected_goals) * 90.0) / NULLIF(SUM(ph.minutes), 0) AS xg90,
+         (SUM(ph.expected_assists) * 90.0) / NULLIF(SUM(ph.minutes), 0) AS xa90,
+         (SUM(ph.expected_goals_conceded) * 90.0) / NULLIF(SUM(ph.minutes), 0) AS xgc90,
+         (SUM(ph.bonus) * 90.0) / NULLIF(SUM(ph.minutes), 0) AS bonus90,
+         (SUM(ph.saves) * 90.0) / NULLIF(SUM(ph.minutes), 0) AS saves90,
+         (SUM(ph.yellow_cards) * 90.0) / NULLIF(SUM(ph.minutes), 0) AS yellow90,
+         (SUM(ph.red_cards) * 90.0) / NULLIF(SUM(ph.minutes), 0) AS red90,
+         (SUM(ph.goals_conceded) * 90.0) / NULLIF(SUM(ph.minutes), 0) AS goalsConceded90,
          AVG(ph.minutes) AS avgMinutes,
          AVG(CASE WHEN ph.starts > 0 THEN 1.0 ELSE 0 END) AS startProbability
        FROM player_history ph
