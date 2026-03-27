@@ -27,6 +27,7 @@ export type MlModelVersionRecord = {
 
 export type PendingMlEvaluationState = {
   gameweekId: number;
+  gameweekIds: number[];
   triggeredAt: string;
   status: "pending";
 };
@@ -253,26 +254,55 @@ export class MlModelRegistryService {
   }
 
   setPendingMlEvaluation(gameweekId: number): PendingMlEvaluationState {
+    const current = this.getPendingMlEvaluation();
+    if (current && current.gameweekIds.includes(gameweekId)) {
+      return current;
+    }
+
+    const triggeredAt = current?.triggeredAt ?? now();
+    const gameweekIds = current
+      ? [...current.gameweekIds, gameweekId].sort((a, b) => a - b)
+      : [gameweekId];
     const payload: PendingMlEvaluationState = {
-      gameweekId,
-      triggeredAt: now(),
+      gameweekId: gameweekIds[0] ?? gameweekId,
+      gameweekIds,
+      triggeredAt,
       status: "pending",
     };
 
-    this.db
-      .prepare(
-        `INSERT INTO sync_state (key, value, updated_at)
-         VALUES (?, ?, ?)
-         ON CONFLICT(key) DO UPDATE SET
-           value = excluded.value,
-           updated_at = excluded.updated_at`,
-      )
-      .run(
-        MlModelRegistryService.pendingMlEvaluationKey,
-        JSON.stringify(payload),
-        payload.triggeredAt,
-      );
+    this.persistPendingMlEvaluation(payload);
 
+    return payload;
+  }
+
+  clearPendingMlEvaluation(gameweekId?: number) {
+    const current = this.getPendingMlEvaluation();
+    if (!current) {
+      return null;
+    }
+
+    if (gameweekId === undefined) {
+      this.db
+        .prepare("DELETE FROM sync_state WHERE key = ?")
+        .run(MlModelRegistryService.pendingMlEvaluationKey);
+      return null;
+    }
+
+    const remainingGameweekIds = current.gameweekIds.filter((id) => id !== gameweekId);
+    if (remainingGameweekIds.length === 0) {
+      this.db
+        .prepare("DELETE FROM sync_state WHERE key = ?")
+        .run(MlModelRegistryService.pendingMlEvaluationKey);
+      return null;
+    }
+
+    const payload: PendingMlEvaluationState = {
+      gameweekId: remainingGameweekIds[0]!,
+      gameweekIds: remainingGameweekIds,
+      triggeredAt: current.triggeredAt,
+      status: "pending",
+    };
+    this.persistPendingMlEvaluation(payload);
     return payload;
   }
 
@@ -284,6 +314,43 @@ export class MlModelRegistryService {
       | undefined;
 
     if (!row) return null;
-    return JSON.parse(row.value) as PendingMlEvaluationState;
+    const parsed = JSON.parse(row.value) as Partial<PendingMlEvaluationState>;
+    const gameweekIds = Array.isArray(parsed.gameweekIds)
+      ? parsed.gameweekIds.filter(
+          (value): value is number =>
+            typeof value === "number" && Number.isInteger(value),
+        )
+      : (
+          typeof parsed.gameweekId === "number" && Number.isInteger(parsed.gameweekId)
+            ? [parsed.gameweekId]
+            : []
+        );
+
+    if (gameweekIds.length === 0 || parsed.status !== "pending" || typeof parsed.triggeredAt !== "string") {
+      return null;
+    }
+
+    return {
+      gameweekId: gameweekIds[0]!,
+      gameweekIds,
+      triggeredAt: parsed.triggeredAt,
+      status: "pending",
+    };
+  }
+
+  private persistPendingMlEvaluation(payload: PendingMlEvaluationState) {
+    this.db
+      .prepare(
+        `INSERT INTO sync_state (key, value, updated_at)
+         VALUES (?, ?, ?)
+         ON CONFLICT(key) DO UPDATE SET
+           value = excluded.value,
+           updated_at = excluded.updated_at`,
+      )
+      .run(
+        MlModelRegistryService.pendingMlEvaluationKey,
+        JSON.stringify(payload),
+        now(),
+      );
   }
 }

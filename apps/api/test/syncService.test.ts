@@ -10,6 +10,21 @@ import {
   fixturesFixture,
 } from "./fixtures.js";
 
+function cloneBootstrapFixture(overrides?: {
+  events?: Array<Partial<(typeof bootstrapFixture.events)[number]>>;
+}) {
+  return {
+    ...bootstrapFixture,
+    events: bootstrapFixture.events.map((event, index) => ({
+      ...event,
+      ...(overrides?.events?.[index] ?? {}),
+    })),
+    teams: bootstrapFixture.teams.map((team) => ({ ...team })),
+    element_types: bootstrapFixture.element_types.map((position) => ({ ...position })),
+    elements: bootstrapFixture.elements.map((player) => ({ ...player })),
+  };
+}
+
 const tempDirs: string[] = [];
 const assetSyncStub = {
   syncBootstrapAssets: vi.fn(async () => ({
@@ -225,5 +240,58 @@ describe("SyncService", () => {
     await service.syncGameweek(1, true);
 
     expect(getElementSummary).toHaveBeenCalledTimes(4);
+  });
+
+  it("queues pending ML evaluation exactly once when a gameweek transitions to finished", async () => {
+    const db = createDatabase(makeDbPath());
+    const getBootstrap = vi
+      .fn()
+      .mockResolvedValueOnce(
+        cloneBootstrapFixture({ events: [{ finished: false, is_current: true }] }),
+      )
+      .mockResolvedValueOnce(
+        cloneBootstrapFixture({ events: [{ finished: true, is_current: false }] }),
+      )
+      .mockResolvedValue(
+        cloneBootstrapFixture({ events: [{ finished: true, is_current: false }] }),
+      );
+    const service = new SyncService(db, {
+      getBootstrap,
+      getFixtures: async () => fixturesFixture,
+      getElementSummary: async (playerId: number) =>
+        createElementSummaryFixture(playerId),
+    } as any, undefined, assetSyncStub as any);
+
+    await service.syncAll();
+    expect(service.getPendingMlEvaluationGameweeks()).toEqual([]);
+
+    const secondRun = await service.syncAll();
+    expect(secondRun.pendingMlEvaluationGameweeks).toEqual([1]);
+    expect(service.getPendingMlEvaluationGameweeks()).toEqual([1]);
+
+    await service.syncAll();
+    expect(service.getPendingMlEvaluationGameweeks()).toEqual([1]);
+  });
+
+  it("keeps pending ML evaluation work active when sync fails after a gameweek finishes", async () => {
+    const db = createDatabase(makeDbPath());
+    const getElementSummary = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("Temporary upstream failure"))
+      .mockImplementation(async (playerId: number) =>
+        createElementSummaryFixture(playerId),
+      );
+    const service = new SyncService(db, {
+      getBootstrap: async () =>
+        cloneBootstrapFixture({ events: [{ finished: true, is_current: false }] }),
+      getFixtures: async () => fixturesFixture,
+      getElementSummary,
+    } as any, undefined, assetSyncStub as any);
+
+    await expect(service.syncAll()).rejects.toThrow("Temporary upstream failure");
+    expect(service.getPendingMlEvaluationGameweeks()).toEqual([1]);
+
+    await service.syncAll();
+    expect(service.getPendingMlEvaluationGameweeks()).toEqual([1]);
   });
 });

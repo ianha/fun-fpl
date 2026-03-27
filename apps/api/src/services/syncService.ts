@@ -7,6 +7,7 @@ import type {
 import { FplApiClient } from "../client/fplApiClient.js";
 import { createHash } from "node:crypto";
 import { AssetSyncService } from "./assetSyncService.js";
+import { MlModelRegistryService } from "./mlModelRegistryService.js";
 
 type SyncLogger = {
   info(message: string): void;
@@ -47,12 +48,16 @@ function calculateExpectedGoalInvolvementPerformance(
 }
 
 export class SyncService {
+  private readonly mlModelRegistryService: MlModelRegistryService;
+
   constructor(
     private readonly db: AppDatabase,
     private readonly client = new FplApiClient(),
     private readonly logger?: SyncLogger,
     private readonly assetSyncService = new AssetSyncService(db),
-  ) {}
+  ) {
+    this.mlModelRegistryService = new MlModelRegistryService(db);
+  }
 
   private logInfo(message: string) {
     this.logger?.info(message);
@@ -247,7 +252,12 @@ export class SyncService {
       this.logInfo(
         `[run ${runId}] Gameweek ${gameweekId} sync finished successfully. Refreshed ${pendingPlayerIds.length} player summaries.`,
       );
-      return { runId, syncedPlayers: pendingPlayerIds.length, gameweekId };
+      return {
+        runId,
+        syncedPlayers: pendingPlayerIds.length,
+        gameweekId,
+        pendingMlEvaluationGameweeks: this.getPendingMlEvaluationGameweeks(),
+      };
     } catch (error) {
       this.finishRun(
         runId,
@@ -301,7 +311,11 @@ export class SyncService {
       this.logInfo(
         `[run ${runId}] Full sync finished successfully. Refreshed ${pendingPlayerIds.length} player summaries.`,
       );
-      return { runId, syncedPlayers: pendingPlayerIds.length };
+      return {
+        runId,
+        syncedPlayers: pendingPlayerIds.length,
+        pendingMlEvaluationGameweeks: this.getPendingMlEvaluationGameweeks(),
+      };
     } catch (error) {
       this.finishRun(
         runId,
@@ -353,6 +367,7 @@ export class SyncService {
 
   syncBootstrap(bootstrap: BootstrapResponse) {
     const updatedAt = now();
+    const newlyFinishedGameweekIds = this.getNewlyFinishedGameweekIds(bootstrap);
     const insertGameweek = this.db.prepare(
       `INSERT INTO gameweeks (id, name, deadline_time, average_entry_score, highest_score, is_current, is_finished, updated_at)
        VALUES (@id, @name, @deadline_time, @average_entry_score, @highest_score, @is_current, @is_finished, @updated_at)
@@ -524,9 +539,23 @@ export class SyncService {
           bootstrap_updated_at: updatedAt,
         });
       }
+
+      for (const gameweekId of newlyFinishedGameweekIds) {
+        this.mlModelRegistryService.setPendingMlEvaluation(gameweekId);
+      }
     });
 
     tx();
+
+    if (newlyFinishedGameweekIds.length > 0) {
+      this.logInfo(
+        `[ml] queued pending evaluation for finished gameweek${newlyFinishedGameweekIds.length > 1 ? "s" : ""} ${newlyFinishedGameweekIds.join(", ")}.`,
+      );
+    }
+  }
+
+  getPendingMlEvaluationGameweeks() {
+    return this.mlModelRegistryService.getPendingMlEvaluation()?.gameweekIds ?? [];
   }
 
   syncFixtures(fixtures: FixturesResponse) {
@@ -607,6 +636,20 @@ export class SyncService {
       )
       .all(snapshot)
       .map((row: any) => row.player_id as number);
+  }
+
+  private getNewlyFinishedGameweekIds(bootstrap: BootstrapResponse) {
+    const existingGameweekRows = this.db
+      .prepare(`SELECT id, is_finished AS isFinished FROM gameweeks`)
+      .all() as Array<{ id: number; isFinished: number }>;
+    const existingFinishedById = new Map(
+      existingGameweekRows.map((row) => [row.id, Boolean(row.isFinished)]),
+    );
+
+    return bootstrap.events
+      .filter((event) => event.finished && !existingFinishedById.get(event.id))
+      .map((event) => event.id)
+      .sort((a, b) => a - b);
   }
 
   getPlayerIdsForGameweek(gameweekId: number): number[] {

@@ -416,7 +416,7 @@ Deterministic post-processing:
 
 - ML improves projection inputs, but the final recommendation engine still behaves like the guarded deterministic workflow the product expects.
 
-- [ ] **Unit 6: Add retry-safe finished-gameweek ML automation hooks**
+- [x] **Unit 6: Add retry-safe finished-gameweek ML automation hooks**
 
 **Goal:** Record and maintain durable pending evaluation work whenever a gameweek finishes so external trainers can poll and retry safely.
 

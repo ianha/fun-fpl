@@ -1,5 +1,6 @@
 import { createDatabase } from "../db/database.js";
 import { SyncService } from "../services/syncService.js";
+import { pathToFileURL } from "node:url";
 
 function parseGameweekArg(argv: string[]) {
   const gameweekIndex = argv.findIndex((arg) => arg === "--gameweek" || arg === "-g");
@@ -53,37 +54,55 @@ function parseForceArg(argv: string[]) {
   return argv.includes("--force") || argv.includes("-f");
 }
 
-const db = createDatabase();
-const logger = {
-  info(message: string) {
-    console.log(`[${new Date().toISOString()}] INFO  ${message}`);
-  },
-  error(message: string) {
-    console.error(`[${new Date().toISOString()}] ERROR ${message}`);
-  },
-};
-const service = new SyncService(db, undefined, logger);
-const argv = process.argv.slice(2);
-const gameweek = parseGameweekArg(argv);
-const playerId = parsePlayerArg(argv);
-const force = parseForceArg(argv);
+export function parseSyncArgs(argv: string[]) {
+  return {
+    gameweek: parseGameweekArg(argv),
+    playerId: parsePlayerArg(argv),
+    force: parseForceArg(argv),
+  };
+}
 
-const syncPromise = playerId
-  ? service.syncPlayer(playerId, gameweek, force)
-  : gameweek
-    ? service.syncGameweek(gameweek, force)
-    : service.syncAll(force);
+export async function runSyncCli(argv = process.argv.slice(2)) {
+  const db = createDatabase();
+  const logger = {
+    info(message: string) {
+      console.log(`[${new Date().toISOString()}] INFO  ${message}`);
+    },
+    error(message: string) {
+      console.error(`[${new Date().toISOString()}] ERROR ${message}`);
+    },
+  };
+  const service = new SyncService(db, undefined, logger);
+  const { gameweek, playerId, force } = parseSyncArgs(argv);
 
-syncPromise
-  .then((result) => {
-    const scope = playerId !== undefined
-      ? `player ${playerId}${gameweek ? ` / gameweek ${gameweek}` : ""}`
-      : gameweek !== undefined
-        ? `gameweek ${gameweek}`
-        : "full dataset";
-    console.log(`Sync completed for ${scope}${force ? " (forced)" : ""}. Run ${result.runId} refreshed ${result.syncedPlayers} player summaries.`);
-  })
-  .catch((error) => {
+  const result = await (
+    playerId
+      ? service.syncPlayer(playerId, gameweek, force)
+      : gameweek
+        ? service.syncGameweek(gameweek, force)
+        : service.syncAll(force)
+  );
+
+  const scope = playerId !== undefined
+    ? `player ${playerId}${gameweek ? ` / gameweek ${gameweek}` : ""}`
+    : gameweek !== undefined
+      ? `gameweek ${gameweek}`
+      : "full dataset";
+  const pendingSuffix =
+    "pendingMlEvaluationGameweeks" in result &&
+    Array.isArray(result.pendingMlEvaluationGameweeks) &&
+    result.pendingMlEvaluationGameweeks.length > 0
+      ? ` Pending ML evaluation for gameweeks: ${result.pendingMlEvaluationGameweeks.join(", ")}.`
+      : "";
+
+  console.log(
+    `Sync completed for ${scope}${force ? " (forced)" : ""}. Run ${result.runId} refreshed ${result.syncedPlayers} player summaries.${pendingSuffix}`,
+  );
+}
+
+if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
+  runSyncCli().catch((error) => {
     console.error("Sync failed:", error);
     process.exitCode = 1;
   });
+}

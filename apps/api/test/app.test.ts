@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createDatabase } from "../src/db/database.js";
 import { QueryService } from "../src/services/queryService.js";
 import { SyncService } from "../src/services/syncService.js";
+import { MlModelRegistryService } from "../src/services/mlModelRegistryService.js";
 import {
   bootstrapFixture,
   createElementSummaryFixture,
@@ -43,6 +44,7 @@ describe("API routes", () => {
     await syncService.syncAll();
 
     const queryService = new QueryService(db);
+    const mlModelRegistryService = new MlModelRegistryService(db);
     const response = queryService.getOverview();
     const playerDetail = queryService.getPlayerById(10);
 
@@ -54,5 +56,6 @@ describe("API routes", () => {
     expect(playerDetail?.player.expectedAssistPerformance).toBeCloseTo(0.8);
     expect(playerDetail?.player.expectedGoalInvolvementPerformance).toBeCloseTo(2.2);
     expect(playerDetail?.history.some((history) => history.tackles === 2)).toBe(true);
+    expect(mlModelRegistryService.getPendingMlEvaluation()).toBeNull();
   });
 });

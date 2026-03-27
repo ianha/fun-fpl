@@ -75,11 +75,38 @@ describe("MlModelRegistryService", () => {
 
     expect(pending).toMatchObject({
       gameweekId: 29,
+      gameweekIds: [29],
       status: "pending",
     });
     expect(stored).toMatchObject({
       gameweekId: 29,
+      gameweekIds: [29],
       status: "pending",
     });
+  });
+
+  it("queues multiple pending ML evaluation gameweeks without duplication and clears them selectively", () => {
+    const db = createDatabase(path.join(tempDir, "pending-evaluation-queue.sqlite"));
+    const service = new MlModelRegistryService(db);
+
+    service.setPendingMlEvaluation(29);
+    service.setPendingMlEvaluation(30);
+    service.setPendingMlEvaluation(29);
+
+    expect(service.getPendingMlEvaluation()).toMatchObject({
+      gameweekId: 29,
+      gameweekIds: [29, 30],
+      status: "pending",
+    });
+
+    const remaining = service.clearPendingMlEvaluation(29);
+    expect(remaining).toMatchObject({
+      gameweekId: 30,
+      gameweekIds: [30],
+      status: "pending",
+    });
+
+    expect(service.clearPendingMlEvaluation(30)).toBeNull();
+    expect(service.getPendingMlEvaluation()).toBeNull();
   });
 });

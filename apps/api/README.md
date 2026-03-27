@@ -27,6 +27,7 @@ You can append flags directly behind the `--` separator to modify the behavior o
 
 **`npm run sync`** (Fetches public player/fixture data)
 - `--gameweek <id>`: Target a single gameweek (e.g., `npm run sync -- --gameweek 29`).
+- `--player <id>`: Target a single player, optionally within one gameweek.
 - `--force`: Bypass caching, downloading data and image assets even if hashes match.
 
 **`npm run sync:my-team`** (Refreshes linked manager account queries)
@@ -44,6 +45,24 @@ You can append flags directly behind the `--` separator to modify the behavior o
 - **`fixtures`**: Match schedules and scores.
 - **`teams`**, **`positions`**, **`gameweeks`**: Reference meta data.
 - **`sync_state`**, **`player_sync_status`**: Identifies completed tasks to allow interrupted syncs to resume intelligently tracking upstream data hashes.
+- **`ml_model_registry`**, **`ml_model_versions`**: Explicit model version metadata and active raw-point coefficient payloads.
+
+## Retry-Safe ML Evaluation Loop
+
+Public-data sync now owns the durable handoff for retraining after finished gameweeks:
+
+1. `npm run sync` (or `npm run sync -- --gameweek <id>`) updates `gameweeks`.
+2. When a gameweek transitions from `is_finished = 0` to `is_finished = 1`, the sync layer appends that gameweek id to the `sync_state` key `pending_ml_evaluation`.
+3. External training code can poll that state, fetch training data through MCP, publish a validated model version, and only then clear the completed gameweek from the queue.
+
+Operational guarantees:
+
+- Finished-gameweek work is queued exactly once per gameweek transition.
+- Re-running sync does not duplicate already queued work.
+- If sync or external training fails later, the pending ML evaluation state remains in place for the next retry.
+- Learned model activation stays decoupled from sync, so upstream data refreshes are not blocked by trainer availability.
+
+The CLI prints queued gameweeks after a successful run whenever pending ML evaluation work exists, making stalled retraining windows visible during normal operations.
 
 ## API Endpoints (`PORT=4000`)
 
