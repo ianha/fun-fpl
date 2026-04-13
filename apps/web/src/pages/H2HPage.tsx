@@ -47,6 +47,7 @@ export function H2HPage() {
   const [state, setState] = useState<AsyncState>({ status: "loading" });
   const [refreshNonce, setRefreshNonce] = useState(0);
   const [syncing, setSyncing] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
 
   useEffect(() => {
     if (!leagueId || !rivalEntryId) {
@@ -252,89 +253,74 @@ export function H2HPage() {
       ) : null}
 
       <GlowCard className="p-6">
-        <h2 className="font-display text-xl font-semibold text-white">Squad overlap</h2>
-        <p className="mt-2 text-lg font-semibold text-accent">{formatOverlapLabel(squadOverlap.overlapPct)}</p>
-        <p className="mt-1 text-sm text-white/55">GW {squadOverlap.gameweek}</p>
-
-        <div className="mt-6 grid gap-4 lg:grid-cols-3">
-          <section>
-            <h3 className="text-sm font-semibold uppercase tracking-wide text-white/55">Shared players</h3>
-            <ul className="mt-2 space-y-2 text-sm text-white/80">
-              {squadOverlap.sharedPlayers.map((player) => (
-                <li key={`shared-${player.id}`}>{formatPlayerTag(player)}</li>
-              ))}
-            </ul>
-          </section>
-          <section>
-            <h3 className="text-sm font-semibold uppercase tracking-wide text-white/55">Your differentials</h3>
-            <ul className="mt-2 space-y-2 text-sm text-white/80">
-              {squadOverlap.userOnlyPlayers.map((player) => (
-                <li key={`user-${player.id}`}>{formatPlayerTag(player)}</li>
-              ))}
-            </ul>
-          </section>
-          <section>
-            <h3 className="text-sm font-semibold uppercase tracking-wide text-white/55">Rival differentials</h3>
-            <ul className="mt-2 space-y-2 text-sm text-white/80">
-              {squadOverlap.rivalOnlyPlayers.map((player) => (
-                <li key={`rival-${player.id}`}>{formatPlayerTag(player)}</li>
-              ))}
-            </ul>
-          </section>
+        <div className="flex flex-wrap items-baseline justify-between gap-3">
+          <h2 className="font-display text-xl font-semibold text-white">Squad overlap</h2>
+          <p className="text-sm text-white/50">GW {squadOverlap.gameweek} · {formatOverlapLabel(squadOverlap.overlapPct)}</p>
         </div>
-      </GlowCard>
 
-      <GlowCard className="p-6">
-        <h2 className="font-display text-xl font-semibold text-white">Manager history</h2>
-        <div className="mt-4 space-y-2">
-          {gmRankHistory.map((row) => (
-            <div key={row.gameweek} className="flex items-center justify-between rounded-lg bg-white/5 px-4 py-3 text-sm text-white/80">
-              <span>GW {row.gameweek}</span>
-              <span>You #{row.userOverallRank.toLocaleString()}</span>
-              <span>Rival #{row.rivalOverallRank.toLocaleString()}</span>
+        <div className="mt-4 grid gap-4 lg:grid-cols-3">
+          <section className="rounded-xl bg-white/5 px-4 py-3">
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-white/40">Shared ({squadOverlap.sharedPlayers.length})</h3>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {squadOverlap.sharedPlayers.map((p) => (
+                <span key={`shared-${p.id}`} className="rounded-md bg-white/10 px-2 py-0.5 text-xs text-white/75">{p.webName}</span>
+              ))}
             </div>
-          ))}
+          </section>
+          <section className="rounded-xl bg-white/5 px-4 py-3">
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-emerald-400/60">Your differentials ({squadOverlap.userOnlyPlayers.length})</h3>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {squadOverlap.userOnlyPlayers.map((p) => (
+                <span key={`user-${p.id}`} className="rounded-md bg-emerald-500/10 px-2 py-0.5 text-xs text-emerald-300/80">{p.webName}</span>
+              ))}
+            </div>
+          </section>
+          <section className="rounded-xl bg-white/5 px-4 py-3">
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-rose-400/60">Rival differentials ({squadOverlap.rivalOnlyPlayers.length})</h3>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {squadOverlap.rivalOnlyPlayers.map((p) => (
+                <span key={`rival-${p.id}`} className="rounded-md bg-rose-500/10 px-2 py-0.5 text-xs text-rose-300/80">{p.webName}</span>
+              ))}
+            </div>
+          </section>
         </div>
       </GlowCard>
 
       {attribution ? (
         <GlowCard className="p-6">
-          <h2 className="font-display text-xl font-semibold text-white">Points attribution</h2>
-          <p className="mt-2 text-sm text-white/60">
-            Overall gap: {formatSignedPoints(attribution.totalPointDelta)}
-          </p>
+          <div className="flex flex-wrap items-baseline justify-between gap-3">
+            <h2 className="font-display text-xl font-semibold text-white">Points attribution</h2>
+            <p className="text-sm font-semibold text-accent">Overall gap: {formatSignedPoints(attribution.totalPointDelta)}</p>
+          </div>
 
-          <div className="mt-6 grid gap-4 lg:grid-cols-3">
-            <section className="rounded-xl bg-white/5 p-4">
-              <h3 className="text-sm font-semibold uppercase tracking-wide text-white/55">Captaincy swing</h3>
-              <p className="mt-2 text-lg font-semibold text-accent">
-                {formatSignedPoints(attribution.captaincy.delta)} · {formatGapShare(attribution.captaincy.shareOfGap)}
-              </p>
-              <p className="mt-2 text-sm text-white/70">
-                You: {attribution.captaincy.userPoints} · Rival: {attribution.captaincy.rivalPoints}
-              </p>
+          <div className="mt-4 grid gap-3 lg:grid-cols-3">
+            <section className="rounded-xl bg-white/5 px-4 py-3">
+              <h3 className="text-xs font-semibold uppercase tracking-wide text-white/40">Captaincy swing</h3>
+              <div className="mt-1.5 flex items-baseline justify-between">
+                <span className="text-lg font-semibold text-accent">{formatSignedPoints(attribution.captaincy.delta)}</span>
+                <span className="text-xs text-white/45">{formatGapShare(attribution.captaincy.shareOfGap)}</span>
+              </div>
+              <p className="mt-1 text-xs text-white/50">You: {attribution.captaincy.userPoints} · Rival: {attribution.captaincy.rivalPoints}</p>
             </section>
 
-            <section className="rounded-xl bg-white/5 p-4">
-              <h3 className="flex items-center text-sm font-semibold uppercase tracking-wide text-white/55">
+            <section className="rounded-xl bg-white/5 px-4 py-3">
+              <h3 className="flex items-center text-xs font-semibold uppercase tracking-wide text-white/40">
                 Transfer net impact
                 <InfoTooltip text={`For each GW where a transfer was made: (your GW score) − (GW average) − (hit cost). Positive means transfers added value above the baseline; negative means churning hurt you.\n\n"You" = your linked FPL team. Rival = ${rivalEntry?.teamName ?? "your rival"}.`} />
               </h3>
-              <p className="mt-2 text-lg font-semibold text-accent">{formatSignedPoints(attribution.transfers.delta)}</p>
-              <p className="mt-2 text-sm text-white/70">
+              <p className="mt-1.5 text-lg font-semibold text-accent">{formatSignedPoints(attribution.transfers.delta)}</p>
+              <p className="mt-1 text-xs text-white/50">
                 You: {formatSignedNumber(attribution.transfers.userNetImpact)} · {rivalEntry?.teamName ?? "Rival"}: {formatSignedNumber(attribution.transfers.rivalNetImpact)}
               </p>
-              <p className="mt-1 text-xs text-white/45">
-                Hits paid: You {attribution.transfers.userHitCost} · {rivalEntry?.teamName ?? "Rival"} {attribution.transfers.rivalHitCost}
+              <p className="text-xs text-white/35">
+                Hits: You −{attribution.transfers.userHitCost} · {rivalEntry?.teamName ?? "Rival"} −{attribution.transfers.rivalHitCost}
               </p>
             </section>
 
-            <section className="rounded-xl bg-white/5 p-4">
-              <h3 className="text-sm font-semibold uppercase tracking-wide text-white/55">Bench points stranded</h3>
-              <p className="mt-2 text-lg font-semibold text-accent">{describeBenchDelta(attribution.bench.delta)}</p>
-              <p className="mt-2 text-sm text-white/70">
-                You: {attribution.bench.userPointsOnBench} · Rival: {attribution.bench.rivalPointsOnBench}
-              </p>
+            <section className="rounded-xl bg-white/5 px-4 py-3">
+              <h3 className="text-xs font-semibold uppercase tracking-wide text-white/40">Bench points stranded</h3>
+              <p className="mt-1.5 text-lg font-semibold text-accent">{describeBenchDelta(attribution.bench.delta)}</p>
+              <p className="mt-1 text-xs text-white/50">You: {attribution.bench.userPointsOnBench} · Rival: {attribution.bench.rivalPointsOnBench}</p>
             </section>
           </div>
         </GlowCard>
@@ -343,24 +329,52 @@ export function H2HPage() {
       {positionalAudit ? (
         <GlowCard className="p-6">
           <h2 className="font-display text-xl font-semibold text-white">Positional audit</h2>
-          <div className="mt-4 space-y-3">
+          <div className="mt-3 space-y-1">
+            <div className="hidden md:grid grid-cols-[1fr_auto_auto_auto] gap-x-6 px-4 pb-1 text-xs font-semibold uppercase tracking-wide text-white/35">
+              <span>Position</span>
+              <span className="w-24 text-right">Delta</span>
+              <span className="w-32 text-right">Avg £/GW</span>
+              <span className="w-28 text-right">Pts/£m</span>
+            </div>
             {positionalAudit.rows.map((row) => (
-              <div key={row.positionName} className="rounded-xl bg-white/5 p-4">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <h3 className="text-sm font-semibold uppercase tracking-wide text-white/55">{row.positionName}</h3>
-                    <p className="mt-1 text-sm text-white/70">
-                      You {row.userPoints} pts vs Rival {row.rivalPoints} pts
-                    </p>
+              <div key={row.positionName} className="rounded-lg bg-white/5 px-4 py-2.5">
+                <div className="md:grid md:grid-cols-[1fr_auto_auto_auto] md:gap-x-6 md:items-center">
+                  <div className="flex items-center justify-between md:justify-start gap-2">
+                    <div>
+                      <span className="text-sm font-semibold text-white/80">{row.positionName}</span>
+                      <span className="ml-2 text-xs text-white/45">{row.userPoints} vs {row.rivalPoints}</span>
+                    </div>
+                    <Badge variant={row.trend === "trail" ? "under-index" : row.trend === "lead" ? "teal" : "outline"} className="md:hidden">
+                      {getTrendLabel(row.trend)}
+                    </Badge>
                   </div>
-                  <Badge variant={row.trend === "trail" ? "under-index" : row.trend === "lead" ? "teal" : "outline"}>
-                    {getTrendLabel(row.trend)}
-                  </Badge>
+                  <span className={`hidden md:block w-24 text-right text-sm font-semibold ${row.pointDelta > 0 ? "text-emerald-400" : row.pointDelta < 0 ? "text-rose-400" : "text-white/60"}`}>
+                    {formatSignedPoints(row.pointDelta)}
+                  </span>
+                  <span className="hidden md:block w-32 text-right text-xs">
+                    <span className={row.userSpend > row.rivalSpend ? "text-emerald-400" : row.userSpend < row.rivalSpend ? "text-rose-400" : "text-white/45"}>£{row.userSpend.toFixed(1)}m</span>
+                    <span className="text-white/30"> vs </span>
+                    <span className={row.rivalSpend > row.userSpend ? "text-emerald-400" : row.rivalSpend < row.userSpend ? "text-rose-400" : "text-white/45"}>£{row.rivalSpend.toFixed(1)}m</span>
+                  </span>
+                  <span className="hidden md:block w-28 text-right text-xs">
+                    <span className={row.userValuePerMillion > row.rivalValuePerMillion ? "text-emerald-400" : row.userValuePerMillion < row.rivalValuePerMillion ? "text-rose-400" : "text-white/45"}>{row.userValuePerMillion.toFixed(1)}</span>
+                    <span className="text-white/30"> vs </span>
+                    <span className={row.rivalValuePerMillion > row.userValuePerMillion ? "text-emerald-400" : row.rivalValuePerMillion < row.userValuePerMillion ? "text-rose-400" : "text-white/45"}>{row.rivalValuePerMillion.toFixed(1)}</span>
+                  </span>
                 </div>
-                <div className="mt-3 grid gap-3 text-sm text-white/70 md:grid-cols-3">
-                  <p>Point delta: {formatSignedPoints(row.pointDelta)}</p>
-                  <p>Spend: £{row.userSpend.toFixed(1)}m vs £{row.rivalSpend.toFixed(1)}m</p>
-                  <p>Value per million: {row.userValuePerMillion.toFixed(2)} vs {row.rivalValuePerMillion.toFixed(2)}</p>
+                <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1 text-xs md:hidden">
+                  <span className={row.pointDelta > 0 ? "text-emerald-400" : row.pointDelta < 0 ? "text-rose-400" : "text-white/45"}>{formatSignedPoints(row.pointDelta)}</span>
+                  <span>
+                    <span className={row.userSpend > row.rivalSpend ? "text-emerald-400" : row.userSpend < row.rivalSpend ? "text-rose-400" : "text-white/45"}>£{row.userSpend.toFixed(1)}m</span>
+                    <span className="text-white/30"> vs </span>
+                    <span className={row.rivalSpend > row.userSpend ? "text-emerald-400" : row.rivalSpend < row.userSpend ? "text-rose-400" : "text-white/45"}>£{row.rivalSpend.toFixed(1)}m</span>
+                  </span>
+                  <span>
+                    <span className={row.userValuePerMillion > row.rivalValuePerMillion ? "text-emerald-400" : row.userValuePerMillion < row.rivalValuePerMillion ? "text-rose-400" : "text-white/45"}>{row.userValuePerMillion.toFixed(1)}</span>
+                    <span className="text-white/30"> vs </span>
+                    <span className={row.rivalValuePerMillion > row.userValuePerMillion ? "text-emerald-400" : row.rivalValuePerMillion < row.userValuePerMillion ? "text-rose-400" : "text-white/45"}>{row.rivalValuePerMillion.toFixed(1)}</span>
+                    <span className="text-white/30"> pts/£m</span>
+                  </span>
                 </div>
               </div>
             ))}
@@ -371,18 +385,18 @@ export function H2HPage() {
               const hitAdjustment = rivalHits - userHits;
               const netTotal = positionalDelta + hitAdjustment;
               return (
-                <div className="mt-1 border-t border-white/10 pt-3 space-y-1.5 text-sm">
-                  <div className="flex justify-between text-white/50">
-                    <span>Positional subtotal (incl. captain bonus)</span>
+                <div className="border-t border-white/10 pt-2 mt-1 space-y-1 text-xs">
+                  <div className="flex justify-between text-white/40 px-4">
+                    <span>Subtotal (incl. captain bonus)</span>
                     <span>{formatSignedPoints(positionalDelta)}</span>
                   </div>
                   {hitAdjustment !== 0 && (
-                    <div className="flex justify-between text-white/50">
+                    <div className="flex justify-between text-white/40 px-4">
                       <span>Transfer hits (You −{userHits} · Rival −{rivalHits})</span>
                       <span>{formatSignedPoints(hitAdjustment)}</span>
                     </div>
                   )}
-                  <div className="flex justify-between font-semibold text-white pt-1 border-t border-white/10">
+                  <div className="flex justify-between font-semibold text-white/80 px-4 pt-1 border-t border-white/10">
                     <span>Net total</span>
                     <span>{formatSignedPoints(netTotal)}</span>
                   </div>
@@ -394,47 +408,87 @@ export function H2HPage() {
       ) : null}
 
       {luckVsSkill ? (
-        <GlowCard className="p-6">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
+        <GlowCard className="px-6 py-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
               <h2 className="font-display text-xl font-semibold text-white">Luck vs skill</h2>
-              <p className="mt-1 text-sm text-white/60">Based on GW {luckVsSkill.basedOnGameweek} xPts</p>
+              <Badge
+                variant={
+                  luckVsSkill.verdict === "rival_running_hot"
+                    ? "lucky-lead"
+                    : luckVsSkill.verdict === "user_running_hot"
+                      ? "teal"
+                      : luckVsSkill.verdict === "insufficient_data"
+                        ? "outline"
+                        : "secondary"
+                }
+              >
+                {getLuckVerdictLabel(luckVsSkill.verdict)}
+              </Badge>
             </div>
-            <Badge
-              variant={
-                luckVsSkill.verdict === "rival_running_hot"
-                  ? "lucky-lead"
-                  : luckVsSkill.verdict === "user_running_hot"
-                    ? "teal"
-                    : luckVsSkill.verdict === "insufficient_data"
-                      ? "outline"
-                      : "secondary"
-              }
+            <p className="text-xs text-white/40">GW {luckVsSkill.basedOnGameweek} xPts</p>
+          </div>
+
+          <p className="mt-2 text-sm text-white/60">{getLuckVerdictDescription(luckVsSkill.verdict)}</p>
+
+          <div className="mt-3 grid gap-3 md:grid-cols-2">
+            <div className="flex items-baseline justify-between rounded-xl bg-white/5 px-4 py-2.5">
+              <div>
+                <h3 className="text-xs font-semibold uppercase tracking-wide text-white/40">Expected edge</h3>
+                <p className="mt-1 text-lg font-semibold text-accent">{formatExpectedEdge(luckVsSkill.expectedDelta)}</p>
+              </div>
+              <p className="text-xs text-white/45">
+                {luckVsSkill.userExpectedPoints?.toFixed(1) ?? "—"} vs {luckVsSkill.rivalExpectedPoints?.toFixed(1) ?? "—"}
+              </p>
+            </div>
+            <div className="flex items-baseline justify-between rounded-xl bg-white/5 px-4 py-2.5">
+              <div>
+                <h3 className="text-xs font-semibold uppercase tracking-wide text-white/40">Variance edge</h3>
+                <p className="mt-1 text-lg font-semibold text-accent">{formatVarianceEdge(luckVsSkill.varianceEdge)}</p>
+              </div>
+              <p className="text-xs text-white/45">Actual: {formatSignedPoints(luckVsSkill.actualDelta)}</p>
+            </div>
+          </div>
+        </GlowCard>
+      ) : null}
+
+      {gmRankHistory.length > 0 ? (
+        <GlowCard className="px-6 py-4">
+          <button
+            type="button"
+            onClick={() => setHistoryOpen((v) => !v)}
+            className="flex w-full items-center justify-between text-left"
+          >
+            <div className="flex items-baseline gap-3">
+              <h2 className="font-display text-xl font-semibold text-white">Manager history</h2>
+              <span className="text-xs text-white/40">{gmRankHistory.length} GWs</span>
+            </div>
+            <svg
+              className={`h-4 w-4 text-white/40 transition-transform ${historyOpen ? "rotate-180" : ""}`}
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={2}
             >
-              {getLuckVerdictLabel(luckVsSkill.verdict)}
-            </Badge>
-          </div>
-
-          <p className="mt-3 text-sm text-white/70">
-            {getLuckVerdictDescription(luckVsSkill.verdict)}
-          </p>
-
-          <div className="mt-5 grid gap-4 md:grid-cols-2">
-            <section className="rounded-xl bg-white/5 p-4">
-              <h3 className="text-sm font-semibold uppercase tracking-wide text-white/55">Expected edge</h3>
-              <p className="mt-2 text-lg font-semibold text-accent">{formatExpectedEdge(luckVsSkill.expectedDelta)}</p>
-              <p className="mt-2 text-sm text-white/70">
-                You: {luckVsSkill.userExpectedPoints?.toFixed(1) ?? "—"} · Rival: {luckVsSkill.rivalExpectedPoints?.toFixed(1) ?? "—"}
-              </p>
-            </section>
-            <section className="rounded-xl bg-white/5 p-4">
-              <h3 className="text-sm font-semibold uppercase tracking-wide text-white/55">Variance edge</h3>
-              <p className="mt-2 text-lg font-semibold text-accent">{formatVarianceEdge(luckVsSkill.varianceEdge)}</p>
-              <p className="mt-2 text-sm text-white/70">
-                Actual gap: {formatSignedPoints(luckVsSkill.actualDelta)}
-              </p>
-            </section>
-          </div>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+          {historyOpen && (
+            <div className="mt-3 space-y-0.5">
+              <div className="grid grid-cols-3 px-4 pb-1.5 text-xs font-semibold uppercase tracking-wide text-white/35">
+                <span>GW</span>
+                <span className="text-right">Your rank</span>
+                <span className="text-right">Rival rank</span>
+              </div>
+              {gmRankHistory.map((row) => (
+                <div key={row.gameweek} className="grid grid-cols-3 rounded bg-white/5 px-4 py-1.5 text-xs text-white/65">
+                  <span>{row.gameweek}</span>
+                  <span className="text-right">#{row.userOverallRank.toLocaleString()}</span>
+                  <span className="text-right">#{row.rivalOverallRank.toLocaleString()}</span>
+                </div>
+              ))}
+            </div>
+          )}
         </GlowCard>
       ) : null}
     </div>

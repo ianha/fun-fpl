@@ -431,12 +431,12 @@ export class H2HQueryService {
   private getPositionalAudit(
     accountId: number,
     rivalEntryId: number,
-    latestGameweek: number,
+    _latestGameweek: number,
   ): H2HPositionalAudit {
     const userPoints = this.getPositionPoints("my_team_picks", "account_id", accountId, accountId, rivalEntryId);
     const rivalPoints = this.getPositionPoints("rival_picks", "entry_id", rivalEntryId, accountId, rivalEntryId);
-    const userSpend = this.getPositionSpend("my_team_picks", "account_id", accountId, latestGameweek);
-    const rivalSpend = this.getPositionSpend("rival_picks", "entry_id", rivalEntryId, latestGameweek);
+    const userSpend = this.getPositionAvgSpend("my_team_picks", "account_id", accountId, accountId, rivalEntryId);
+    const rivalSpend = this.getPositionAvgSpend("rival_picks", "entry_id", rivalEntryId, accountId, rivalEntryId);
     const positionNames = ["Goalkeeper", "Defender", "Midfielder", "Forward"];
 
     return {
@@ -499,25 +499,35 @@ export class H2HQueryService {
     return new Map(result.map((row) => [row.positionName, row.totalPoints]));
   }
 
-  private getPositionSpend(
+  private getPositionAvgSpend(
     tableName: "my_team_picks" | "rival_picks",
     ownerColumn: "account_id" | "entry_id",
     ownerId: number,
-    gameweek: number,
+    accountId: number,
+    rivalEntryId: number,
   ) {
+    const rows = this.getComparedGameweeks(accountId, rivalEntryId);
+    if (rows.length === 0) {
+      return new Map<string, number>();
+    }
+    const gwTable = tableName === "my_team_picks" ? "my_team_gameweeks" : "rival_gameweeks";
+    const gwCount = rows.length;
+    const placeholders = rows.map(() => "?").join(", ");
     const result = this.db
       .prepare(
-        `SELECT pos.name AS positionName, SUM(pl.now_cost) / 10.0 AS spend
+        `SELECT pos.name AS positionName, SUM(pl.now_cost) / 10.0 / ${gwCount} AS spend
          FROM ${tableName} p
          INNER JOIN players pl ON pl.id = p.player_id
          INNER JOIN positions pos ON pos.id = pl.position_id
+         LEFT JOIN ${gwTable} g ON g.${ownerColumn} = p.${ownerColumn}
+           AND g.gameweek_id = p.gameweek_id
          WHERE p.${ownerColumn} = ?
-           AND p.gameweek_id = ?
-           AND p.position <= 11
+           AND p.gameweek_id IN (${placeholders})
+           AND (p.position <= 11 OR g.active_chip = 'bboost')
          GROUP BY pos.name
          ORDER BY pos.id`,
       )
-      .all(ownerId, gameweek) as PositionSpendRow[];
+      .all(ownerId, ...rows.map((row) => row.gameweek)) as PositionSpendRow[];
     return new Map(result.map((row) => [row.positionName, row.spend]));
   }
 
