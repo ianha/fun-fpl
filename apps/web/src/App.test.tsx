@@ -8,6 +8,7 @@ const apiMocks = vi.hoisted(() => ({
   getOverview: vi.fn(),
   getGameweeks: vi.fn(),
   getPlayers: vi.fn(),
+  getH2HComparison: vi.fn(),
   getMyTeam: vi.fn(),
   getMyTeamGameweekPicks: vi.fn(),
   getTransferDecision: vi.fn(),
@@ -32,6 +33,7 @@ vi.mock("./api/client", () => ({
   getOverview: apiMocks.getOverview,
   getGameweeks: apiMocks.getGameweeks,
   getPlayers: apiMocks.getPlayers,
+  getH2HComparison: apiMocks.getH2HComparison,
   getMyTeam: apiMocks.getMyTeam,
   getMyTeamGameweekPicks: apiMocks.getMyTeamGameweekPicks,
   getTransferDecision: apiMocks.getTransferDecision,
@@ -159,6 +161,24 @@ describe("App", () => {
     },
   ]);
     apiMocks.getPlayers.mockResolvedValue(mockPlayers);
+    apiMocks.getH2HComparison.mockResolvedValue({
+      syncRequired: false,
+      rivalEntry: {
+        entryId: 501,
+        playerName: "Brad",
+        teamName: "Brad FC",
+        rank: 1,
+        totalPoints: 130,
+      },
+      squadOverlap: {
+        gameweek: 2,
+        overlapPct: 86.7,
+        sharedPlayers: [],
+        userOnlyPlayers: [],
+        rivalOnlyPlayers: [],
+      },
+      gmRankHistory: [],
+    });
     apiMocks.getMyTeam.mockResolvedValue({
     accounts: [
       {
@@ -355,5 +375,15 @@ describe("App", () => {
     expect(screen.getByRole("link", { name: /My Team/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Sync/i })).toBeInTheDocument();
     expect(apiMocks.getMyTeam).toHaveBeenCalled();
+  });
+
+  it("renders the h2h route inside the shared shell", async () => {
+    render(
+      <MemoryRouter initialEntries={["/leagues/99/h2h/501"]}>
+        <App />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByRole("heading", { name: /Brad FC/i })).toBeInTheDocument();
   });
 });

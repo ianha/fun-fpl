@@ -225,7 +225,7 @@ Why this phase lands last:
 **Verification:**
 - A caller can fetch league standings, choose a rival entry, trigger sync, and observe persisted rival rows backing later analytics.
 
-- [ ] **Unit 2: Create the H2H contracts, query service, and first comparison endpoint**
+- [x] **Unit 2: Create the H2H contracts, query service, and first comparison endpoint**
 
 **Goal:** Add the shared data model and backend orchestration needed for a dedicated H2H comparison response.
 
@@ -258,7 +258,7 @@ Why this phase lands last:
 **Verification:**
 - The API can serve a coherent H2H payload for a synced rival without requiring frontend composition of multiple endpoints.
 
-- [ ] **Unit 3: Ship the Phase 2 frontend experience**
+- [x] **Unit 3: Ship the Phase 2 frontend experience**
 
 **Goal:** Deliver the first end-to-end user-visible H2H workflow from sidebar entry to comparison page.
 

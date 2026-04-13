@@ -307,6 +307,35 @@ export type RivalSyncResponse = {
   lastSyncedGw: number | null;
 };
 
+export type H2HPlayerRef = {
+  id: number;
+  webName: string;
+  teamShortName: string;
+  nowCost: number;
+  positionName: string;
+};
+
+export type SquadOverlap = {
+  gameweek: number;
+  overlapPct: number;
+  sharedPlayers: H2HPlayerRef[];
+  userOnlyPlayers: H2HPlayerRef[];
+  rivalOnlyPlayers: H2HPlayerRef[];
+};
+
+export type GmRankHistory = {
+  gameweek: number;
+  userOverallRank: number;
+  rivalOverallRank: number;
+};
+
+export type H2HComparisonResponse = {
+  syncRequired: boolean;
+  rivalEntry: H2HLeagueStanding | null;
+  squadOverlap: SquadOverlap | null;
+  gmRankHistory: GmRankHistory[];
+};
+
 export type LivePlayerPoints = {
   playerId: number;
   minutes: number;

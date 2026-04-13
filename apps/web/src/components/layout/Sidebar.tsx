@@ -9,6 +9,7 @@ import {
   TrendingUp,
   Shield,
   MessageSquare,
+  Trophy,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
@@ -20,6 +21,7 @@ const navItems = [
   { to: "/players", label: "Players", icon: Users },
   { to: "/fixtures", label: "Fixtures", icon: Calendar },
   { to: "/fixtures/fdr", label: "FDR Ticker", icon: BarChart2 },
+  { to: "/leagues", label: "Mini-League", icon: Trophy },
   { to: "/chat", label: "AI Chat", icon: MessageSquare },
 ] as const;
 

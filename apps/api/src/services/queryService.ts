@@ -26,6 +26,7 @@ import type {
 import type { AppDatabase } from "../db/database.js";
 import { ManagerRoiService, type ManagerRoiProfile } from "./managerRoiService.js";
 import { MlModelRegistryService } from "./mlModelRegistryService.js";
+import { H2HQueryService } from "./h2hQueryService.js";
 
 type PlayerQuery = {
   search?: string;
@@ -225,10 +226,12 @@ function mapBoolean(value: number | null | undefined) {
 export class QueryService {
   private readonly managerRoiService: ManagerRoiService;
   private readonly mlModelRegistryService: MlModelRegistryService;
+  private readonly h2hQueryService: H2HQueryService;
 
   constructor(private readonly db: AppDatabase) {
     this.managerRoiService = new ManagerRoiService(db);
     this.mlModelRegistryService = new MlModelRegistryService(db);
+    this.h2hQueryService = new H2HQueryService(db);
   }
 
   getGameweeks(): GameweekSummary[] {
@@ -666,6 +669,10 @@ export class QueryService {
       seasons,
       history,
     };
+  }
+
+  getH2HComparison(accountId: number, leagueId: number, rivalEntryId: number) {
+    return this.h2hQueryService.getH2HComparison(accountId, leagueId, rivalEntryId);
   }
 
   getMyTeamPicksForGameweek(accountId: number, gameweek: number): MyTeamGameweekPicksResponse {

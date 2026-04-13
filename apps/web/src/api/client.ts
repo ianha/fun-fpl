@@ -2,6 +2,7 @@ import type {
   CaptainRecommendation,
   FdrRow,
   GwCalendarRow,
+  H2HComparisonResponse,
   LiveGwUpdate,
   OverviewResponse,
   PlayerCard,
@@ -32,8 +33,8 @@ function resolveApiBaseUrl() {
 const API_BASE_URL = resolveApiBaseUrl();
 export const API_ORIGIN = API_BASE_URL.replace(/\/api\/?$/, "");
 
-async function request<T>(path: string): Promise<T> {
-  const response = await fetch(`${API_BASE_URL}${path}`);
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const response = await fetch(`${API_BASE_URL}${path}`, init);
   if (!response.ok) {
     throw new Error(`Request failed: ${response.status}`);
   }
@@ -92,6 +93,21 @@ export function getPlayers(params?: {
 
 export function getPlayer(playerId: number) {
   return request<PlayerDetail>(`/players/${playerId}`);
+}
+
+export function getH2HComparison(
+  leagueId: number,
+  rivalEntryId: number,
+  options?: { accountId?: number; signal?: AbortSignal },
+) {
+  const search = new URLSearchParams();
+  if (options?.accountId !== undefined) search.set("accountId", String(options.accountId));
+  const query = search.toString();
+
+  return request<H2HComparisonResponse>(
+    `/leagues/${leagueId}/h2h/${rivalEntryId}${query ? `?${query}` : ""}`,
+    options?.signal ? { signal: options.signal } : undefined,
+  );
 }
 
 export function getTeams() {

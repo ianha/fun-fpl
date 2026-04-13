@@ -327,6 +327,29 @@ export function createApiRouter(db: AppDatabase) {
     }
   });
 
+  router.get("/leagues/:leagueId/h2h/:rivalEntryId", (req, res) => {
+    const leagueId = Number(req.params.leagueId);
+    const rivalEntryId = Number(req.params.rivalEntryId);
+    const accountId = req.query.accountId ? Number(req.query.accountId) : 1;
+
+    if (!Number.isInteger(leagueId) || leagueId <= 0) {
+      res.status(400).json({ message: "leagueId must be a positive integer" });
+      return;
+    }
+
+    if (!Number.isInteger(rivalEntryId) || rivalEntryId <= 0) {
+      res.status(400).json({ message: "rivalEntryId must be a positive integer" });
+      return;
+    }
+
+    if (!Number.isInteger(accountId) || accountId <= 0) {
+      res.status(400).json({ message: "accountId must be a positive integer" });
+      return;
+    }
+
+    res.json(queryService.getH2HComparison(accountId, leagueId, rivalEntryId));
+  });
+
   // GET /api/my-team/:accountId/recap/:gw/preview — HTML page with OG/Twitter card meta tags
   // so X/WhatsApp/Telegram scrapers render the recap image inline when the link is shared.
   // Real browsers are immediately redirected to the PNG via <meta http-equiv="refresh">.

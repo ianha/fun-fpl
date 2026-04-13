@@ -5,6 +5,7 @@ import request from "supertest";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createApp } from "../src/app.js";
 import { createDatabase } from "../src/db/database.js";
+import { seedH2HComparisonData } from "./h2hFixtures.js";
 import { now, seedPublicData } from "./myTeamFixtures.js";
 
 let tempDir = "";
@@ -168,5 +169,30 @@ describe("Rival league routes", () => {
     expect(rivalEntries.count).toBe(2);
     expect(rivalGameweeks.count).toBe(2);
     expect(rivalPicks.count).toBe(4);
+  });
+
+  it("returns the first h2h comparison payload for a synced rival", async () => {
+    const db = createDatabase(path.join(tempDir, "test.sqlite"));
+    seedH2HComparisonData(db);
+    const app = createApp(db);
+
+    const response = await request(app)
+      .get("/api/leagues/99/h2h/501?accountId=1")
+      .expect(200);
+
+    expect(response.body.syncRequired).toBe(false);
+    expect(response.body.rivalEntry).toMatchObject({
+      entryId: 501,
+      playerName: "Brad",
+      teamName: "Brad FC",
+    });
+    expect(response.body.squadOverlap).toMatchObject({
+      gameweek: 2,
+      overlapPct: 93.3,
+    });
+    expect(response.body.gmRankHistory).toEqual([
+      { gameweek: 1, userOverallRank: 120000, rivalOverallRank: 130000 },
+      { gameweek: 2, userOverallRank: 90000, rivalOverallRank: 98000 },
+    ]);
   });
 });
