@@ -343,10 +343,12 @@ export function H2HPage() {
                   <div className="flex items-center justify-between md:justify-start gap-2">
                     <div>
                       <span className="text-sm font-semibold text-white/80">{row.positionName}</span>
-                      <span className="ml-2 text-xs text-white/45">
-                        {row.userPoints}{row.userCaptainBonus > 0 && <span className="text-amber-400/60"> +{row.userCaptainBonus}C</span>}
-                        {" vs "}
-                        {row.rivalPoints}{row.rivalCaptainBonus > 0 && <span className="text-amber-400/60"> +{row.rivalCaptainBonus}C</span>}
+                      <span className="ml-2 text-xs">
+                        <span className={row.userPoints > row.rivalPoints ? "text-emerald-400/70" : row.userPoints < row.rivalPoints ? "text-rose-400/70" : "text-white/45"}>{row.userPoints}</span>
+                        {row.userCaptainBonus > 0 && <span className="text-amber-400/60"> +{row.userCaptainBonus}C</span>}
+                        <span className="text-white/35"> vs </span>
+                        <span className={row.rivalPoints > row.userPoints ? "text-emerald-400/70" : row.rivalPoints < row.userPoints ? "text-rose-400/70" : "text-white/45"}>{row.rivalPoints}</span>
+                        {row.rivalCaptainBonus > 0 && <span className="text-amber-400/60"> +{row.rivalCaptainBonus}C</span>}
                         {(row.userCaptainBonus > 0 || row.rivalCaptainBonus > 0) && (() => {
                           const capDelta = row.userCaptainBonus - row.rivalCaptainBonus;
                           return (
