@@ -343,7 +343,19 @@ export function H2HPage() {
                   <div className="flex items-center justify-between md:justify-start gap-2">
                     <div>
                       <span className="text-sm font-semibold text-white/80">{row.positionName}</span>
-                      <span className="ml-2 text-xs text-white/45">{row.userPoints} vs {row.rivalPoints}</span>
+                      <span className="ml-2 text-xs text-white/45">
+                        {row.userPoints}{row.userCaptainBonus > 0 && <span className="text-amber-400/60"> +{row.userCaptainBonus}C</span>}
+                        {" vs "}
+                        {row.rivalPoints}{row.rivalCaptainBonus > 0 && <span className="text-amber-400/60"> +{row.rivalCaptainBonus}C</span>}
+                        {(row.userCaptainBonus > 0 || row.rivalCaptainBonus > 0) && (() => {
+                          const capDelta = row.userCaptainBonus - row.rivalCaptainBonus;
+                          return (
+                            <span className={`ml-1 ${capDelta > 0 ? "text-emerald-400/70" : capDelta < 0 ? "text-rose-400/70" : "text-white/35"}`}>
+                              ({capDelta > 0 ? "+" : ""}{capDelta})
+                            </span>
+                          );
+                        })()}
+                      </span>
                     </div>
                     <Badge variant={row.trend === "trail" ? "trail" : row.trend === "lead" ? "lead" : "outline"} className="md:hidden">
                       {getTrendLabel(row.trend)}

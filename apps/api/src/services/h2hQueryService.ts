@@ -53,6 +53,7 @@ type TotalRow = {
 type PositionPointsRow = {
   positionName: string;
   totalPoints: number;
+  captainBonus: number;
 };
 
 type PositionSpendRow = {
@@ -439,10 +440,13 @@ export class H2HQueryService {
     const rivalSpend = this.getPositionAvgSpend("rival_picks", "entry_id", rivalEntryId, accountId, rivalEntryId);
     const positionNames = ["Goalkeeper", "Defender", "Midfielder", "Forward"];
 
+    const zeroPts = { total: 0, captainBonus: 0 };
     return {
       rows: positionNames.map((positionName) => {
-        const userPointTotal = userPoints.get(positionName) ?? 0;
-        const rivalPointTotal = rivalPoints.get(positionName) ?? 0;
+        const userPts = userPoints.get(positionName) ?? zeroPts;
+        const rivalPts = rivalPoints.get(positionName) ?? zeroPts;
+        const userPointTotal = userPts.total;
+        const rivalPointTotal = rivalPts.total;
         const userSpendTotal = userSpend.get(positionName) ?? 0;
         const rivalSpendTotal = rivalSpend.get(positionName) ?? 0;
         const userValuePerMillion =
@@ -457,6 +461,8 @@ export class H2HQueryService {
           userPoints: userPointTotal,
           rivalPoints: rivalPointTotal,
           pointDelta,
+          userCaptainBonus: userPts.captainBonus,
+          rivalCaptainBonus: rivalPts.captainBonus,
           userSpend: roundTo(userSpendTotal, 1),
           rivalSpend: roundTo(rivalSpendTotal, 1),
           userValuePerMillion,
@@ -477,13 +483,15 @@ export class H2HQueryService {
   ) {
     const rows = this.getComparedGameweeks(accountId, rivalEntryId);
     if (rows.length === 0) {
-      return new Map<string, number>();
+      return new Map<string, { total: number; captainBonus: number }>();
     }
     const gwTable = tableName === "my_team_picks" ? "my_team_gameweeks" : "rival_gameweeks";
     const placeholders = rows.map(() => "?").join(", ");
     const result = this.db
       .prepare(
-        `SELECT pos.name AS positionName, SUM(p.gw_points * p.multiplier) AS totalPoints
+        `SELECT pos.name AS positionName,
+                SUM(p.gw_points * p.multiplier) AS totalPoints,
+                SUM(CASE WHEN p.multiplier > 1 THEN p.gw_points * (p.multiplier - 1) ELSE 0 END) AS captainBonus
          FROM ${tableName} p
          INNER JOIN players pl ON pl.id = p.player_id
          INNER JOIN positions pos ON pos.id = pl.position_id
@@ -496,7 +504,7 @@ export class H2HQueryService {
          ORDER BY pos.id`,
       )
       .all(ownerId, ...rows.map((row) => row.gameweek)) as PositionPointsRow[];
-    return new Map(result.map((row) => [row.positionName, row.totalPoints]));
+    return new Map(result.map((row) => [row.positionName, { total: row.totalPoints, captainBonus: row.captainBonus }]));
   }
 
   private getPositionAvgSpend(

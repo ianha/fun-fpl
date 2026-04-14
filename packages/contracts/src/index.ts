@@ -374,6 +374,8 @@ export type H2HPositionAuditRow = {
   userPoints: number;
   rivalPoints: number;
   pointDelta: number;
+  userCaptainBonus: number;
+  rivalCaptainBonus: number;
   userSpend: number;
   rivalSpend: number;
   userValuePerMillion: number;
