@@ -1,10 +1,14 @@
 import type { H2HComparisonResponse } from "@fpl/contracts";
 import { useEffect, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { getH2HComparison, syncH2HRival } from "@/api/client";
 import type { PayloadAsyncState } from "@/lib/asyncState";
 import { GlowCard } from "@/components/ui/glow-card";
 import { Badge } from "@/components/ui/badge";
+import {
+  buildH2HChatPrompt,
+  storePendingH2HChatSeed,
+} from "./h2hChatPrompt";
 import {
   describeBenchDelta,
   formatExpectedEdge,
@@ -39,6 +43,7 @@ export function resetH2HPageCacheForTests() {
 }
 
 export function H2HPage() {
+  const navigate = useNavigate();
   const { leagueId, rivalEntryId } = useParams<{ leagueId?: string; rivalEntryId?: string }>();
   const [state, setState] = useState<PayloadAsyncState<H2HComparisonResponse>>({ status: "loading" });
   const [refreshNonce, setRefreshNonce] = useState(0);
@@ -115,6 +120,27 @@ export function H2HPage() {
     } finally {
       setSyncing(false);
     }
+  }
+
+  function handleAskAi() {
+    if (!leagueId || !rivalEntryId) {
+      return;
+    }
+
+    if (state.status !== "ready" || state.payload.syncRequired || !state.payload.squadOverlap || !state.payload.rivalEntry) {
+      return;
+    }
+
+    const prompt = buildH2HChatPrompt(Number(leagueId), Number(rivalEntryId), state.payload);
+    storePendingH2HChatSeed({
+      source: "h2h-rival-summary",
+      createdAt: new Date().toISOString(),
+      leagueId: Number(leagueId),
+      rivalEntryId: Number(rivalEntryId),
+      rivalTeamName: state.payload.rivalEntry.teamName,
+      prompt,
+    });
+    navigate("/chat");
   }
 
   if (state.status === "loading") {
@@ -226,6 +252,13 @@ export function H2HPage() {
             </p>
           </div>
           <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={handleAskAi}
+              className="inline-flex items-center rounded-xl border border-white/20 bg-accent px-4 py-2 text-sm font-semibold text-white shadow-md shadow-black/25 transition hover:-translate-y-0.5 hover:bg-accent/90 hover:shadow-lg hover:shadow-black/30 active:translate-y-0"
+            >
+              Ask AI about this rival
+            </button>
             <button
               type="button"
               onClick={() => { void handleSync(); }}

@@ -1,7 +1,7 @@
 ---
 title: feat: H2H Rival Analysis Chat Handoff
 type: feat
-status: proposed
+status: completed
 date: 2026-04-16
 ---
 

@@ -139,6 +139,7 @@ function renderH2HPage(initialEntries = ["/leagues/99/h2h/501"]) {
         <Routes>
           <Route path="/leagues" element={<H2HPage />} />
           <Route path="/leagues/:leagueId/h2h/:rivalEntryId" element={<H2HPage />} />
+          <Route path="/chat" element={<div>Chat landing</div>} />
         </Routes>
       </MemoryRouter>,
     ),
@@ -149,6 +150,7 @@ describe("H2HPage", () => {
   beforeEach(() => {
     resetH2HPageCacheForTests();
     vi.clearAllMocks();
+    sessionStorage.clear();
   });
 
   it("renders the first synced h2h slice for a rival route", async () => {
@@ -257,6 +259,24 @@ describe("H2HPage", () => {
     expect(screen.getByText(/73.3% overlap/i)).toBeInTheDocument();
     expect(getH2HComparisonMock).toHaveBeenNthCalledWith(1, 99, 501);
     expect(getH2HComparisonMock).toHaveBeenNthCalledWith(2, 99, 502);
+  });
+
+  it("stores a seeded chat prompt and routes to chat from a synced rival page", async () => {
+    getH2HComparisonMock.mockResolvedValue(buildPayload());
+
+    renderH2HPage();
+
+    expect(await screen.findByRole("heading", { name: /^Brad FC$/i, level: 1 })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /Ask AI about this rival/i }));
+
+    expect(await screen.findByText(/Chat landing/i)).toBeInTheDocument();
+
+    const rawSeed = sessionStorage.getItem("fpl-chat-seed");
+    expect(rawSeed).toBeTruthy();
+    expect(rawSeed).toContain("h2h-rival-summary");
+    expect(rawSeed).toContain("Brad FC");
+    expect(rawSeed).toContain("captaincy");
   });
 
   it("re-syncs a stale rival and refetches the comparison instead of serving stale cache", async () => {

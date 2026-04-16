@@ -7,30 +7,21 @@ import { cn } from "@/lib/utils";
 import { getChatGoogleAuthUrl, getChatProviders, streamChat } from "@/api/client";
 import {
   applyChatEvent,
+  clearPersistedMessages,
+  loadPersistedMessages,
+  persistMessages,
   parseSseChunk,
   shouldAutofocusChatInput,
   toChatHistory,
   type Message,
   type ProviderInfo,
 } from "./chatPageUtils";
+import {
+  clearPendingH2HChatSeed,
+  loadPendingH2HChatSeed,
+} from "./h2hChatPrompt";
 
-// ── Storage helpers ───────────────────────────────────────────────────────────
-
-const MESSAGES_KEY = "fpl-chat-messages";
 const PROVIDER_KEY = "fpl-chat-provider";
-
-function loadMessages(): Message[] {
-  try {
-    const raw = localStorage.getItem(MESSAGES_KEY);
-    return raw ? (JSON.parse(raw) as Message[]) : [];
-  } catch {
-    return [];
-  }
-}
-
-function saveMessages(messages: Message[]): void {
-  localStorage.setItem(MESSAGES_KEY, JSON.stringify(messages));
-}
 
 function prettifyJson(raw: string): string {
   try {
@@ -169,15 +160,19 @@ function MessageBubble({ message }: { message: Message }) {
 export function ChatPage() {
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [messages, setMessages] = useState<Message[]>(loadMessages);
+  const [messages, setMessages] = useState<Message[]>(loadPersistedMessages);
   const [providers, setProviders] = useState<ProviderInfo[]>([]);
   const [selectedProvider, setSelectedProvider] = useState<string>(
     () => localStorage.getItem(PROVIDER_KEY) ?? "",
   );
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
+  const [pendingSeedPrompt, setPendingSeedPrompt] = useState<string | null>(
+    () => loadPendingH2HChatSeed()?.prompt ?? null,
+  );
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const autoSentSeedRef = useRef<string | null>(null);
   const providerInfo = providers.find((p) => p.id === selectedProvider);
   const needsOAuth = providerInfo?.authType === "oauth" && !providerInfo.oauthConnected;
 
@@ -213,7 +208,12 @@ export function ChatPage() {
 
   // ── Persist state ────────────────────────────────────────────────────────────
   useEffect(() => {
-    saveMessages(messages.filter((m) => !m.streaming));
+    const persisted = messages.filter((m) => !m.streaming);
+    if (persisted.length === 0) {
+      clearPersistedMessages();
+      return;
+    }
+    persistMessages(persisted);
   }, [messages]);
 
   useEffect(() => {
@@ -248,8 +248,18 @@ export function ChatPage() {
   }, [location.key, needsOAuth, providers.length, streaming]);
 
   // ── Send message ─────────────────────────────────────────────────────────────
-  const send = useCallback(async () => {
-    const text = input.trim();
+  useEffect(() => {
+    const pendingSeed = loadPendingH2HChatSeed();
+    if (!pendingSeed) {
+      return;
+    }
+
+    setPendingSeedPrompt(pendingSeed.prompt);
+    setInput((existing) => existing || pendingSeed.prompt);
+  }, []);
+
+  const send = useCallback(async (rawText?: string, options?: { replaceHistory?: boolean }) => {
+    const text = (rawText ?? input).trim();
     if (!text || streaming || !selectedProvider) return;
 
     const userMsg: Message = {
@@ -268,11 +278,15 @@ export function ChatPage() {
     };
 
     setInput("");
-    setMessages((prev) => [...prev, userMsg, assistantMsg]);
+    if (options?.replaceHistory) {
+      setMessages([userMsg, assistantMsg]);
+    } else {
+      setMessages((prev) => [...prev, userMsg, assistantMsg]);
+    }
     setStreaming(true);
 
     // Build the history to send (all non-streaming messages + new user msg)
-    const history = toChatHistory(messages, userMsg);
+    const history = toChatHistory(options?.replaceHistory ? [] : messages, userMsg);
 
     try {
       const reader = await streamChat(selectedProvider, history);
@@ -307,6 +321,21 @@ export function ChatPage() {
 
     setStreaming(false);
   }, [input, streaming, selectedProvider, messages]);
+
+  useEffect(() => {
+    if (!pendingSeedPrompt || streaming || providers.length === 0 || !selectedProvider || needsOAuth) {
+      return;
+    }
+
+    if (autoSentSeedRef.current === pendingSeedPrompt) {
+      return;
+    }
+
+    autoSentSeedRef.current = pendingSeedPrompt;
+    clearPendingH2HChatSeed();
+    setPendingSeedPrompt(null);
+    void send(pendingSeedPrompt, { replaceHistory: true });
+  }, [pendingSeedPrompt, streaming, providers.length, selectedProvider, needsOAuth, send]);
 
   // ── Keyboard handler ──────────────────────────────────────────────────────────
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -453,7 +482,9 @@ export function ChatPage() {
           />
           <button
             type="button"
-            onClick={send}
+            onClick={() => {
+              void send();
+            }}
             disabled={streaming || !input.trim() || needsOAuth || providers.length === 0}
             className={cn(
               "flex h-7 w-7 shrink-0 items-center justify-center rounded-lg transition-all",

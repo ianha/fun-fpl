@@ -24,6 +24,8 @@ export type Message = {
 
 export type ChatMessage = Pick<Message, "role" | "content">;
 
+const MESSAGES_KEY = "fpl-chat-messages";
+
 export type ChatEvent =
   | { type: "text_delta"; content: string }
   | { type: "tool_start"; id: string; name: string; input: Record<string, unknown> }
@@ -34,6 +36,23 @@ export type ChatEvent =
 export function shouldAutofocusChatInput(): boolean {
   if (typeof window === "undefined") return false;
   return !window.matchMedia("(max-width: 767px), (pointer: coarse)").matches;
+}
+
+export function loadPersistedMessages(): Message[] {
+  try {
+    const raw = localStorage.getItem(MESSAGES_KEY);
+    return raw ? (JSON.parse(raw) as Message[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function persistMessages(messages: Message[]): void {
+  localStorage.setItem(MESSAGES_KEY, JSON.stringify(messages));
+}
+
+export function clearPersistedMessages(): void {
+  localStorage.removeItem(MESSAGES_KEY);
 }
 
 export function toChatHistory(messages: Message[], nextMessage: Message): ChatMessage[] {
