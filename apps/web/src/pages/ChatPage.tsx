@@ -2,7 +2,8 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { useLocation, useSearchParams } from "react-router-dom";
 import Markdown from "react-markdown";
 import type { Components } from "react-markdown";
-import { Send, MessageSquare, Bot, User, Loader2, LogIn } from "lucide-react";
+import remarkGfm from "remark-gfm";
+import { Send, MessageSquare, Bot, User, Loader2, LogIn, Download, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getChatGoogleAuthUrl, getChatProviders, streamChat } from "@/api/client";
 import {
@@ -35,6 +36,16 @@ function getToolSql(input: Record<string, unknown>): string | null {
   return typeof input.sql === "string" ? input.sql : null;
 }
 
+function downloadMarkdown(content: string) {
+  const blob = new Blob([content], { type: "text/markdown;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `fpl-chat-export-${new Date().toISOString().slice(0, 10)}.md`;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
 // ── Markdown components (dark theme) ─────────────────────────────────────────
 
 const markdownComponents: Components = {
@@ -51,6 +62,24 @@ const markdownComponents: Components = {
       {children}
     </pre>
   ),
+  table: ({ children }) => (
+    <div className="my-2 overflow-x-auto rounded-xl border border-white/10 bg-black/20">
+      <table className="min-w-full border-collapse text-left text-xs text-white/85">
+        {children}
+      </table>
+    </div>
+  ),
+  thead: ({ children }) => <thead className="bg-white/[0.06]">{children}</thead>,
+  tbody: ({ children }) => <tbody>{children}</tbody>,
+  tr: ({ children }) => <tr className="border-b border-white/10 last:border-b-0">{children}</tr>,
+  th: ({ children }) => (
+    <th className="whitespace-nowrap px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-white/55">
+      {children}
+    </th>
+  ),
+  td: ({ children }) => (
+    <td className="whitespace-nowrap px-3 py-2 align-top text-sm text-white/85">{children}</td>
+  ),
   ul: ({ children }) => <ul className="mb-1.5 ml-4 list-disc space-y-0.5">{children}</ul>,
   ol: ({ children }) => <ol className="mb-1.5 ml-4 list-decimal space-y-0.5">{children}</ol>,
   li: ({ children }) => <li>{children}</li>,
@@ -66,6 +95,7 @@ function MessageBubble({ message }: { message: Message }) {
   const [showQueries, setShowQueries] = useState(false);
   const toolCalls = message.toolCalls ?? [];
   const hasQueries = toolCalls.length > 0;
+  const canExportMarkdown = !isUser && Boolean(message.content);
   const queryLabel = toolCalls.length > 1 ? `DB queries (${toolCalls.length})` : "DB query";
 
   return (
@@ -92,14 +122,14 @@ function MessageBubble({ message }: { message: Message }) {
           className={cn(
             "rounded-2xl px-4 py-2.5 text-sm leading-relaxed",
             isUser
-              ? "bg-gradient-to-br from-primary/80 to-primary/60 text-white rounded-tr-sm"
+              ? "rounded-tr-sm border border-primary/50 bg-gradient-to-br from-primary to-primary/80 text-white shadow-lg shadow-primary/20"
               : "bg-white/5 border border-white/10 text-white/90 rounded-tl-sm",
           )}
         >
           {isUser && message.content ? (
             <span className="whitespace-pre-wrap">{message.content}</span>
           ) : !isUser && message.content ? (
-            <Markdown components={markdownComponents}>
+            <Markdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
               {message.content}
             </Markdown>
           ) : message.streaming ? (
@@ -110,7 +140,7 @@ function MessageBubble({ message }: { message: Message }) {
           ) : null}
 
           {/* Inline DB query panel */}
-          {!isUser && hasQueries && (
+          {!isUser && (hasQueries || canExportMarkdown) && (
             <>
               {showQueries && (
                 <div className="mt-2 pt-2 border-t border-white/10 space-y-3">
@@ -138,14 +168,27 @@ function MessageBubble({ message }: { message: Message }) {
                   ))}
                 </div>
               )}
-              <div className="flex justify-end mt-1.5">
-                <button
-                  type="button"
-                  onClick={() => setShowQueries((v) => !v)}
-                  className="text-[9px] text-white/30 hover:text-white/60 transition-colors"
-                >
-                  {queryLabel}
-                </button>
+              <div className="mt-1.5 flex items-center justify-end gap-3">
+                {canExportMarkdown ? (
+                  <button
+                    type="button"
+                    onClick={() => downloadMarkdown(message.content)}
+                    className="inline-flex items-center gap-1 text-[7px] text-white/30 hover:text-white/55 transition-colors"
+                  >
+                    <Download className="h-2.5 w-2.5" />
+                    Export markdown
+                  </button>
+                ) : null}
+                {hasQueries ? (
+                  <button
+                    type="button"
+                    onClick={() => setShowQueries((v) => !v)}
+                    className="inline-flex items-center gap-1 text-[7px] text-white/30 hover:text-white/55 transition-colors"
+                  >
+                    <ChevronDown className={cn("h-2.5 w-2.5 transition-transform", showQueries ? "rotate-180" : "")} />
+                    {queryLabel}
+                  </button>
+                ) : null}
               </div>
             </>
           )}

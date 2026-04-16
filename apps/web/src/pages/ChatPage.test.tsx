@@ -74,6 +74,8 @@ describe("ChatPage", () => {
     });
 
     Element.prototype.scrollIntoView = vi.fn();
+    URL.createObjectURL = vi.fn(() => "blob:test-url");
+    URL.revokeObjectURL = vi.fn();
   });
 
   it("auto-sends a seeded H2H prompt exactly once when chat opens", async () => {
@@ -125,5 +127,107 @@ describe("ChatPage", () => {
     await waitFor(() => {
       expect(streamChatMock).toHaveBeenCalledTimes(1);
     });
+  });
+
+  it("renders assistant markdown tables as structured HTML tables", async () => {
+    window.localStorage.setItem(
+      "fpl-chat-messages",
+      JSON.stringify([
+        {
+          id: "a-1",
+          role: "assistant",
+          content: [
+            "| Player | Team | Price |",
+            "| --- | --- | --- |",
+            "| Haaland | MCI | £14.4m |",
+            "| Palmer | CHE | £10.5m |",
+          ].join("\n"),
+        },
+      ]),
+    );
+
+    getChatProvidersMock.mockResolvedValue([
+      {
+        id: "openai-main",
+        name: "OpenAI",
+        provider: "openai",
+        model: "gpt-test",
+        authType: "apiKey",
+        oauthConnected: false,
+      },
+    ]);
+    getChatGoogleAuthUrlMock.mockResolvedValue("https://accounts.test/oauth");
+
+    render(
+      <MemoryRouter initialEntries={["/chat"]}>
+        <Routes>
+          <Route path="/chat" element={<ChatPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    const table = await screen.findByRole("table");
+    expect(table).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: /Player/i })).toBeInTheDocument();
+    expect(screen.getByRole("cell", { name: /Haaland/i })).toBeInTheDocument();
+    expect(screen.getByRole("cell", { name: /£14.4m/i })).toBeInTheDocument();
+  });
+
+  it("shows an export markdown action and downloads the assistant response", async () => {
+    const originalCreateElement = document.createElement.bind(document);
+    const clickSpy = vi.fn();
+    const createElementSpy = vi.spyOn(document, "createElement").mockImplementation((tagName: string) => {
+      if (tagName === "a") {
+        return {
+          click: clickSpy,
+          set href(_value: string) {},
+          set download(_value: string) {},
+        } as unknown as HTMLAnchorElement;
+      }
+      return originalCreateElement(tagName);
+    });
+
+    window.localStorage.setItem(
+      "fpl-chat-messages",
+      JSON.stringify([
+        {
+          id: "a-1",
+          role: "assistant",
+          content: "## Rival Report\n\n| Player | Team |\n| --- | --- |\n| Haaland | MCI |",
+          toolCalls: [{ id: "tool-1", name: "query", input: { sql: "select 1" }, result: "[1]" }],
+        },
+      ]),
+    );
+
+    getChatProvidersMock.mockResolvedValue([
+      {
+        id: "openai-main",
+        name: "OpenAI",
+        provider: "openai",
+        model: "gpt-test",
+        authType: "apiKey",
+        oauthConnected: false,
+      },
+    ]);
+    getChatGoogleAuthUrlMock.mockResolvedValue("https://accounts.test/oauth");
+
+    render(
+      <MemoryRouter initialEntries={["/chat"]}>
+        <Routes>
+          <Route path="/chat" element={<ChatPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    const exportButton = await screen.findByRole("button", { name: /Export markdown/i });
+    expect(screen.getByRole("button", { name: /DB query/i })).toBeInTheDocument();
+
+    exportButton.click();
+
+    expect(URL.createObjectURL).toHaveBeenCalledTimes(1);
+    expect(clickSpy).toHaveBeenCalledTimes(1);
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:test-url");
+
+    createElementSpy.mockRestore();
   });
 });
