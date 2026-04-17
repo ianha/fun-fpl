@@ -221,7 +221,7 @@ export class FplApiClient {
   async getClassicLeagueStandings(leagueId: number, page = 1) {
     return this.rateLimiter.schedule(() =>
       fetchJson<LeagueStandingsResponse>(
-        `${env.baseUrl}/leagues-classic/${leagueId}/standings/?page=${page}`,
+        `${env.baseUrl}/leagues-classic/${leagueId}/standings/?page_standings=${page}`,
       ),
     );
   }
@@ -229,7 +229,7 @@ export class FplApiClient {
   async getH2HLeagueStandings(leagueId: number, page = 1) {
     return this.rateLimiter.schedule(() =>
       fetchJson<LeagueStandingsResponse>(
-        `${env.baseUrl}/leagues-h2h/${leagueId}/standings/?page=${page}`,
+        `${env.baseUrl}/leagues-h2h/${leagueId}/standings/?page_standings=${page}`,
       ),
     );
   }

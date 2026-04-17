@@ -4,6 +4,7 @@ import type {
   GwCalendarRow,
   H2HComparisonResponse,
   H2HLeagueStanding,
+  LeagueStandingsPage,
   LiveGwUpdate,
   MyLeague,
   OverviewResponse,
@@ -223,8 +224,14 @@ export function discoverMyLeagues(accountId?: number) {
   return requestWithBody<MyLeague[]>("/my-team/leagues/discover", "POST", accountId ? { accountId } : {});
 }
 
-export function getLeagueStandings(leagueId: number, type: "classic" | "h2h", accountId?: number) {
-  return request<H2HLeagueStanding[]>(withQuery(`/leagues/${leagueId}/standings`, { type, accountId }));
+export function getLeagueStandingsPage(
+  leagueId: number,
+  type: "classic" | "h2h",
+  page = 1,
+) {
+  return request<LeagueStandingsPage>(
+    withQuery(`/leagues/${leagueId}/standings`, { type, page }),
+  );
 }
 
 export function getLiveGwSnapshot(gw: number) {

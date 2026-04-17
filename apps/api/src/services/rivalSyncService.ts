@@ -19,11 +19,45 @@ export type RivalStanding = {
   totalPoints: number;
 };
 
+export type RivalStandingsPage = {
+  leagueId: number;
+  leagueType: RivalLeagueType;
+  leagueName: string;
+  page: number;
+  pageSize: number;
+  hasNext: boolean;
+  standings: RivalStanding[];
+};
+
 export class RivalSyncService {
   constructor(
     private readonly db: AppDatabase,
     private readonly client = new FplApiClient(),
   ) {}
+
+  async getLeagueStandingsPage(
+    leagueId: number,
+    leagueType: RivalLeagueType,
+    page: number,
+  ): Promise<RivalStandingsPage> {
+    const response = await this.getLeaguePage(leagueType, leagueId, page);
+    const standings = response.standings.results.map((row) => ({
+      entryId: row.entry,
+      playerName: row.player_name,
+      teamName: row.entry_name,
+      rank: row.rank,
+      totalPoints: row.total,
+    }));
+    return {
+      leagueId,
+      leagueType,
+      leagueName: response.league.name,
+      page,
+      pageSize: standings.length,
+      hasNext: response.standings.has_next,
+      standings,
+    };
+  }
 
   async syncLeagueStandings(
     leagueId: number,

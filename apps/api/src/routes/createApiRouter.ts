@@ -353,19 +353,19 @@ export function createApiRouter(db: AppDatabase) {
       "type must be 'classic' or 'h2h'",
     );
     if (sendParseError(res, leagueTypeResult.error)) return;
-    const accountIdResult = parseOptionalPositiveInt(req.query.accountId?.toString(), "accountId");
-    if (sendParseError(res, accountIdResult.error)) return;
+    const pageResult = parseOptionalPositiveInt(req.query.page?.toString(), "page");
+    if (sendParseError(res, pageResult.error)) return;
     const leagueId = leagueIdResult.value!;
     const leagueType = leagueTypeResult.value!;
-    const accountId = accountIdResult.value ?? 1;
+    const page = pageResult.value ?? 1;
 
     try {
-      const result = await rivalSyncService.syncLeagueStandings(
+      const result = await rivalSyncService.getLeagueStandingsPage(
         leagueId,
         leagueType,
-        accountId,
+        page,
       );
-      res.json(result.standings);
+      res.json(result);
     } catch (error) {
       res.status(502).json({
         message: error instanceof Error ? error.message : String(error),

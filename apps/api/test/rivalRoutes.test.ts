@@ -47,7 +47,7 @@ beforeEach(() => {
   vi.stubGlobal("fetch", vi.fn(async (input: string | URL) => {
     const url = String(input);
 
-    if (url.endsWith("/leagues-classic/99/standings/?page=1")) {
+    if (url.endsWith("/leagues-classic/99/standings/?page_standings=1")) {
       return new Response(JSON.stringify({
         league: { id: 99, name: "Writers ML" },
         standings: {
@@ -59,7 +59,7 @@ beforeEach(() => {
       }), { status: 200, headers: { "content-type": "application/json" } });
     }
 
-    if (url.endsWith("/leagues-classic/99/standings/?page=2")) {
+    if (url.endsWith("/leagues-classic/99/standings/?page_standings=2")) {
       return new Response(JSON.stringify({
         league: { id: 99, name: "Writers ML" },
         standings: {
@@ -148,19 +148,42 @@ afterEach(() => {
 });
 
 describe("Rival league routes", () => {
-  it("returns paginated classic standings through the API", async () => {
+  it("returns a single page of classic standings without paginating upstream", async () => {
     const db = createDatabase(path.join(tempDir, "test.sqlite"));
     seedPhaseOneData(db);
     const app = createApp(db);
 
-    const response = await request(app)
+    const firstPage = await request(app)
       .get("/api/leagues/99/standings?type=classic")
       .expect(200);
 
-    expect(response.body).toEqual([
-      { entryId: 501, playerName: "Brad", teamName: "Brad FC", rank: 1, totalPoints: 130 },
-      { entryId: 502, playerName: "Sean", teamName: "Sean FC", rank: 2, totalPoints: 125 },
-    ]);
+    expect(firstPage.body).toEqual({
+      leagueId: 99,
+      leagueType: "classic",
+      leagueName: "Writers ML",
+      page: 1,
+      pageSize: 1,
+      hasNext: true,
+      standings: [
+        { entryId: 501, playerName: "Brad", teamName: "Brad FC", rank: 1, totalPoints: 130 },
+      ],
+    });
+
+    const secondPage = await request(app)
+      .get("/api/leagues/99/standings?type=classic&page=2")
+      .expect(200);
+
+    expect(secondPage.body).toEqual({
+      leagueId: 99,
+      leagueType: "classic",
+      leagueName: "Writers ML",
+      page: 2,
+      pageSize: 1,
+      hasNext: false,
+      standings: [
+        { entryId: 502, playerName: "Sean", teamName: "Sean FC", rank: 2, totalPoints: 125 },
+      ],
+    });
   });
 
   it("syncs one rival through the API and persists rival rows", async () => {

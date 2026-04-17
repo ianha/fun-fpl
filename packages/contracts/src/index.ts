@@ -301,6 +301,16 @@ export type H2HLeagueStanding = {
   totalPoints: number;
 };
 
+export type LeagueStandingsPage = {
+  leagueId: number;
+  leagueType: "classic" | "h2h";
+  leagueName: string;
+  page: number;
+  pageSize: number;
+  hasNext: boolean;
+  standings: H2HLeagueStanding[];
+};
+
 export type RivalSyncResponse = {
   entryId: number;
   syncedGameweeks: number;
